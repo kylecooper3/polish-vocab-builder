@@ -21,6 +21,15 @@ def test_past_tense_forms_join_their_real_lemma(nlp):
     assert set(_entry(result, "myśleć").forms) == {"myślałem", "myśli"}
 
 
+def test_wybory_is_counted_as_wybor(nlp):
+    result = analyze_text("Wybory odbędą się w niedzielę. To był trudny wybór. Nie mam wyboru.", nlp)
+    assert _entry(result, "wybory") is None
+    entry = _entry(result, "wybór")
+    assert entry.count == 3
+    assert set(entry.forms) == {"wybory", "wybór", "wyboru"}
+    assert "choice" in entry.translation
+
+
 def test_entries_include_a_translation(nlp):
     result = analyze_text("Mój pies lubi dom.", nlp)
     assert "dog" in _entry(result, "pies").translation

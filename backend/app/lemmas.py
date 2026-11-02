@@ -22,6 +22,10 @@ CHUNK_SIZE = 20_000
 # Digits never reach this check: the is_alpha test removes them first.
 EXCLUDED_POS = {"PROPN", "PUNCT", "SYM", "X", "SPACE"}
 
+# Lemmas counted as another word. spaCy treats "wybory" as its own word, but it's also
+# the plural of "wybór" ("choice"). Merging means its "elections" meaning isn't listed.
+LEMMA_MERGES = {"wybory": "wybór"}
+
 # Sentences of this length make the best flashcard examples.
 MIN_EXAMPLE_WORDS = 5
 MAX_EXAMPLE_WORDS = 25
@@ -114,7 +118,7 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
                 lemma_parts = token.lemma_.lower().split()
                 if not lemma_parts:
                     continue
-                lemma = lemma_parts[0]
+                lemma = LEMMA_MERGES.get(lemma_parts[0], lemma_parts[0])
 
                 tally = tallies.setdefault(lemma, _Tally())
                 tally.count += 1
