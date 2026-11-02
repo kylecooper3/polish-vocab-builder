@@ -1,9 +1,7 @@
 import { useState } from 'react'
-import Coverage from './components/Coverage.jsx'
-import Filters from './components/Filters.jsx'
-import ResultsTable from './components/ResultsTable.jsx'
-import { applyFilters, posOptions, searchLemmas, sortLemmas } from './lemmaUtils.js'
-import { sampleResult } from './sampleData.js'
+import { analyzeBook } from './api.js'
+import Results from './components/Results.jsx'
+import UploadZone from './components/UploadZone.jsx'
 
 // A COMPONENT is a function that returns what should appear on screen. React calls it
 // whenever its data changes, then updates only the parts of the page that differ.
@@ -11,32 +9,25 @@ function App() {
   // STATE is data that can change while the app runs. useState gives us the current
   // value and a function to update it. An ordinary variable wouldn't work here: calling
   // the setter is what tells React to run this function again and redraw the page.
-  const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({ pos: 'ALL', minCount: 1, hideStopwords: false })
-  const [sortKey, setSortKey] = useState('rank')
-  const [sortDirection, setSortDirection] = useState('asc')
+  const [book, setBook] = useState(null) // { result, filename, id } once one is analyzed
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  function updateFilter(name, value) {
-    // {...filters} copies the old object, then we overwrite one field. Passing React a
-    // new object, rather than changing the old one, is how it notices the change.
-    setFilters({ ...filters, [name]: value })
-  }
-
-  function handleSort(key) {
-    if (key === sortKey) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortKey(key)
-      // For counts, the biggest number first is the more useful starting point.
-      setSortDirection(key === 'count' ? 'desc' : 'asc')
+  // Runs in response to a user action, so it doesn't need useEffect. The real work
+  // happens inside analyzeBook, and the page stays usable while we await it.
+  async function handleFile(file) {
+    setIsLoading(true)
+    setError('')
+    try {
+      const result = await analyzeBook(file)
+      setBook({ result, filename: file.name, id: Date.now() })
+    } catch (uploadError) {
+      setError(uploadError.message)
+    } finally {
+      // "finally" runs on success and failure, so the spinner can never get stuck.
+      setIsLoading(false)
     }
   }
-
-  // None of these need their own state: they can always be worked out from the state
-  // above. Storing them separately would just create copies that could get out of sync.
-  const { lemmas, total_tokens: totalTokens } = sampleResult
-  const filtered = applyFilters(lemmas, filters)
-  const rows = sortLemmas(searchLemmas(filtered, search), sortKey, sortDirection)
 
   // JSX looks like HTML but is really JavaScript, which is why it uses "className"
   // ("class" is a reserved word) and can include values in {curly braces}.
@@ -49,27 +40,25 @@ function App() {
         </p>
       </header>
 
-      {/* Passing values down as attributes is how a parent gives a child its props. */}
-      <Coverage lemmas={filtered} totalTokens={totalTokens} />
+      <UploadZone onFile={handleFile} disabled={isLoading} />
 
-      <Filters
-        search={search}
-        onSearchChange={setSearch}
-        filters={filters}
-        onFilterChange={updateFilter}
-        posCodes={posOptions(lemmas)}
-      />
+      {/* "a && b" shows b only when a is true, so these appear only when relevant. */}
+      {isLoading && (
+        <p className="status" role="status">
+          <span className="spinner" aria-hidden="true" />
+          Analyzing your book. A long novel can take a minute or more.
+        </p>
+      )}
 
-      <p className="result-count" aria-live="polite">
-        Showing {rows.length} of {lemmas.length} lemmas
-      </p>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
-      <ResultsTable
-        rows={rows}
-        sortKey={sortKey}
-        sortDirection={sortDirection}
-        onSort={handleSort}
-      />
+      {/* A new key tells React this is a different Results, so it starts over with
+          fresh state. A filter from the last book can't carry over by accident. */}
+      {book && <Results key={book.id} result={book.result} filename={book.filename} />}
     </main>
   )
 }

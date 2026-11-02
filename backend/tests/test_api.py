@@ -50,6 +50,23 @@ def test_exclude_stopwords_keeps_ranks_and_totals(client, make_pdf):
     assert all(item["rank"] == ranks[item["lemma"]] for item in filtered["lemmas"])
 
 
+@pytest.mark.parametrize("origin", ["http://localhost:5173", "http://127.0.0.1:5173"])
+def test_cors_allows_the_frontend(client, origin):
+    response = client.post(
+        "/analyze", files={"file": ("notes.txt", b"hello")}, headers={"Origin": origin}
+    )
+    assert response.headers["access-control-allow-origin"] == origin
+
+
+def test_cors_does_not_allow_other_sites(client):
+    response = client.post(
+        "/analyze",
+        files={"file": ("notes.txt", b"hello")},
+        headers={"Origin": "https://example.com"},
+    )
+    assert "access-control-allow-origin" not in response.headers
+
+
 def test_unsupported_type_returns_415(client):
     assert _upload(client, "notes.txt", b"hello").status_code == 415
 

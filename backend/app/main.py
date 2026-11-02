@@ -3,12 +3,16 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.cleaning import clean_pages
 from app.extraction import UnreadableFileError, UnsupportedFormatError, extract_pages
 from app.lemmas import AnalysisResult, analyze_text, load_model
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+# Browsers only let these sites read our responses: the Vite dev server, by either name.
+ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 @asynccontextmanager
@@ -19,6 +23,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Polish Vocab Builder", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["POST"],
+)
 
 
 # A plain "def" (not "async def") makes FastAPI run this in a worker thread, so
