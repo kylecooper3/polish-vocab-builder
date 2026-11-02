@@ -59,6 +59,25 @@ export function sortLemmas(lemmas, key, direction) {
   return direction === 'asc' ? sorted : sorted.reverse()
 }
 
+// CSV format for importing into Anki: one card per line, front then back. There's no
+// header row because Anki would turn it into a flashcard. Doubling any quote mark and
+// wrapping each field in quotes stops commas or quotes in a sentence breaking the columns.
+export function toAnkiCsv(lemmas) {
+  const quote = (text) => `"${text.replaceAll('"', '""')}"`
+  return lemmas.map((entry) => `${quote(entry.lemma)},${quote(entry.example)}`).join('\n') + '\n'
+}
+
+// Browsers have no "save file" function for text made in the page. So we wrap the text
+// in a Blob (file-like data), give it a temporary URL, and click a hidden download link.
+export function downloadTextFile(text, filename) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 // What share of all counted words in the book do the first topN lemmas account for?
 // totalTokens always covers the whole book, so hiding stopwords lowers this figure
 // instead of flattering it.

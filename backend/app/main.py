@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.cleaning import clean_pages
+from app.cleaning import clean_pages, looks_garbled
 from app.extraction import UnreadableFileError, UnsupportedFormatError, extract_pages
 from app.lemmas import AnalysisResult, analyze_text, load_model
 
@@ -47,7 +47,19 @@ def analyze(file: UploadFile = File(...), exclude_stopwords: bool = False):
     except UnreadableFileError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    result = analyze_text(clean_pages(pages), load_model())
+    text = clean_pages(pages)
+
+    # Checked before spaCy, so a bad file fails in a second rather than after a minute.
+    if looks_garbled(text):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "This file's text can't be read reliably. Its hidden text layer may be "
+                "damaged, or it may not be in Polish. If it's a PDF, try an EPUB edition."
+            ),
+        )
+
+    result = analyze_text(text, load_model())
 
     if result.total_tokens == 0:
         raise HTTPException(

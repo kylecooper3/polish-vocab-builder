@@ -11,6 +11,8 @@ PAGE_NUMBER_LINE = re.compile(
 )
 ROMAN_LINE = re.compile(r"^\W*[ivxlc]+\W*$")
 
+SOFT_HYPHEN_AT_LINE_END = re.compile(r"­(?=[ \t]*$)", re.MULTILINE)
+
 # A word broken across a line: "książ-\nka" becomes "książka".
 LINE_BREAK_HYPHEN = re.compile(r"(?<=\w)[-‐]\n\s*(?=[a-ząćęłńóśźż])")
 
@@ -26,6 +28,23 @@ PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
 # How many lines at the top and bottom of a page can be a header or footer.
 EDGE_LINES = 2
 MAX_HEADER_LENGTH = 80
+
+# Polish books can quote some Greek or Russian, but "j" alone is about 2% of letters.
+MAX_NON_LATIN_SHARE = 0.01
+
+
+def looks_garbled(text: str) -> bool:
+    """Is too much of this text not Latin letters to be a usable Polish book?
+
+    A PDF can look perfect on screen while its hidden text layer maps letters to the
+    wrong characters. In one real book every "j" came out as the Telugu letter "గ",
+    and some spaces vanished too, so it can't be repaired without guessing.
+    """
+    letters = [char for char in text if char.isalpha() or unicodedata.category(char) == "Co"]
+    if not letters:
+        return False
+    unexpected = sum(1 for char in letters if "LATIN" not in unicodedata.name(char, ""))
+    return unexpected / len(letters) > MAX_NON_LATIN_SHARE
 
 
 def clean_pages(pages: list[str]) -> str:
@@ -45,8 +64,12 @@ def clean_pages(pages: list[str]) -> str:
 def _normalize_characters(text: str) -> str:
     # NFKC gives every letter one standard encoding. PDFs may store "ą" as "a"
     # plus a separate tail, or "fi" as a single ligature, which would otherwise
-    # look like different words. U+00AD is an invisible "soft" hyphen.
-    return unicodedata.normalize("NFKC", text).replace("­", "")
+    # look like different words.
+    text = unicodedata.normalize("NFKC", text)
+    # U+00AD is a "soft" hyphen. At a line end it marks a split word, so it becomes a
+    # normal hyphen for the rejoining step. Anywhere else it's invisible, so it goes.
+    text = SOFT_HYPHEN_AT_LINE_END.sub("-", text)
+    return text.replace("­", "")
 
 
 def _is_page_number(line: str) -> bool:

@@ -11,8 +11,10 @@ from spacy.language import Language
 MODEL_NAME = "pl_core_news_lg"
 
 # spaCy refuses single texts over 1,000,000 characters by default, because its
-# memory use grows with text length. Feeding it pieces keeps usage predictable.
-CHUNK_SIZE = 100_000
+# memory use grows with text length. Measured on a 780,000-character novel, these
+# pieces processed one at a time (see analyze_text) use 79 MB on top of the model,
+# against 2,582 MB for 100,000-character pieces at spaCy's default batch size.
+CHUNK_SIZE = 20_000
 
 # Spelled-out numbers (NUM, like "dwa") stay because they are useful vocabulary.
 # Digits never reach this check: the is_alpha test removes them first.
@@ -92,7 +94,9 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
     tallies: dict[str, _Tally] = {}
     total_tokens = 0
 
-    for doc in nlp.pipe(split_into_chunks(text)):
+    # By default nlp.pipe groups up to 1,000 texts into a batch, which would process
+    # every chunk at once and undo the memory saving of splitting the text.
+    for doc in nlp.pipe(split_into_chunks(text), batch_size=1):
         for sentence in doc.sents:
             sentence_text = " ".join(sentence.text.split())
             word_count = sum(1 for token in sentence if not token.is_punct and not token.is_space)

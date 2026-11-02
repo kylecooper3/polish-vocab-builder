@@ -82,6 +82,13 @@ def test_pdf_with_no_text_returns_422(client, make_pdf):
     assert "scanned" in response.json()["detail"]
 
 
+def test_garbled_text_returns_422_with_advice(client, make_epub):
+    html = "<html><body><p>Sprawiedliwym గest to, że గa గuż wiem, గak గest.</p></body></html>"
+    response = _upload(client, "book.epub", make_epub([html]))
+    assert response.status_code == 422
+    assert "EPUB" in response.json()["detail"]
+
+
 def test_oversized_file_returns_413(client, monkeypatch):
     monkeypatch.setattr(main, "MAX_UPLOAD_BYTES", 10)
     assert _upload(client, "big.pdf", b"x" * 11).status_code == 413

@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import { applyFilters, posOptions, searchLemmas, sortLemmas } from '../lemmaUtils.js'
+import {
+  applyFilters,
+  downloadTextFile,
+  posOptions,
+  searchLemmas,
+  sortLemmas,
+  toAnkiCsv,
+} from '../lemmaUtils.js'
 import Coverage from './Coverage.jsx'
 import Filters from './Filters.jsx'
 import ResultsTable from './ResultsTable.jsx'
@@ -32,6 +39,12 @@ function Results({ result, filename }) {
   const filtered = applyFilters(lemmas, filters)
   const rows = sortLemmas(searchLemmas(filtered, search), sortKey, sortDirection)
 
+  function handleExport() {
+    // Exports every matching row in the current order, not just those drawn on screen.
+    const bookName = filename.replace(/\.[^.]+$/, '')
+    downloadTextFile(toAnkiCsv(rows), `${bookName}-anki.csv`)
+  }
+
   return (
     <>
       <p className="book-summary">
@@ -50,9 +63,19 @@ function Results({ result, filename }) {
         posCodes={posOptions(lemmas)}
       />
 
-      <p className="result-count" aria-live="polite">
-        Showing {rows.length.toLocaleString()} of {lemmas.length.toLocaleString()} lemmas
-      </p>
+      <div className="results-bar">
+        <p className="result-count" aria-live="polite">
+          {rows.length.toLocaleString()} of {lemmas.length.toLocaleString()} lemmas match
+        </p>
+        <button
+          type="button"
+          className="button"
+          onClick={handleExport}
+          disabled={rows.length === 0}
+        >
+          Export {rows.length.toLocaleString()} to CSV for Anki
+        </button>
+      </div>
 
       <ResultsTable
         rows={rows}

@@ -1,6 +1,6 @@
 import unicodedata
 
-from app.cleaning import clean_pages
+from app.cleaning import clean_pages, looks_garbled
 
 
 def test_rejoins_word_hyphenated_across_lines():
@@ -70,6 +70,36 @@ def test_removes_footnote_marker_stuck_to_a_word():
 
 def test_keeps_standalone_numbers_next_to_words():
     assert clean_pages(["Rok 1984 i 12 psów."]) == "Rok 1984 i 12 psów."
+
+
+def test_rejoins_word_split_by_soft_hyphen_at_line_end():
+    assert clean_pages(["To jest książ­\nka o psie."]) == "To jest książka o psie."
+
+
+def test_rejoins_word_split_by_soft_hyphen_across_pages():
+    assert clean_pages(["To jest książ­", "ka o psie."]) == "To jest książka o psie."
+
+
+def test_normal_polish_text_is_not_garbled():
+    assert not looks_garbled("Zażółć gęślą jaźń — to jest zwykły polski tekst, 1878 rok!")
+
+
+def test_wrong_letter_mapping_is_garbled():
+    assert looks_garbled("Sprawiedliwym గest to, że గa గuż wiem, గak గest.")
+
+
+def test_private_use_characters_are_garbled():
+    assert looks_garbled(" tekst")
+
+
+def test_a_short_foreign_quotation_is_not_garbled():
+    text = "To jest długi polski akapit o książkach. " * 30 + "Rzekł: Война."
+    assert not looks_garbled(text)
+
+
+def test_text_with_no_letters_is_not_called_garbled():
+    assert not looks_garbled("")
+    assert not looks_garbled("123 456")
 
 
 def test_empty_input_gives_empty_text():
