@@ -20,6 +20,7 @@ backend/uploads/
 !sample/*.epub
 
 # Editor and OS clutter
+.claude/
 .vscode/
 .idea/
 .DS_Store
