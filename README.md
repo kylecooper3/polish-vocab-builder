@@ -1,0 +1,183 @@
+# Polish Vocab Builder
+
+[![Tests](https://github.com/kylecooper3/polish-vocab-builder/actions/workflows/tests.yml/badge.svg)](https://github.com/kylecooper3/polish-vocab-builder/actions/workflows/tests.yml)
+
+Upload a Polish book as a PDF or EPUB and get a frequency list of its vocabulary, counted by dictionary form, so you can study the most useful words first. Each word comes with its English meaning, every form seen in the book, and an example sentence, and the list exports to Anki.
+
+![The results screen, showing coverage, filters and a table of Polish words with translations](docs/screenshot.jpg)
+
+## Why lemmatization matters for Polish
+
+Polish is heavily inflected: a word changes form depending on its role in the sentence. `mam`, `masz` and `ma` are all forms of `mieć` ("to have"), and irregular forms can look nothing like the dictionary word, such as `szedł` from `iść` ("to go").
+
+Counting raw words would split one word into many entries and bury the words that matter. In *Lalka* by Bolesław Prus, `mieć` appears in **27 different forms**. Lemmatization reduces each form to its dictionary form, or *lemma*, so all 27 count as one word to learn.
+
+It also makes the results useful for planning. In that novel (111,198 counted words):
+
+| Most frequent lemmas | Share of the book's words |
+|---|---|
+| Top 100 | 49.0% |
+| Top 500 | 68.6% |
+| Top 1,000 | 76.6% |
+| Top 5,000 | 92.7% |
+
+## Features
+
+- **Upload** a PDF or EPUB by drag and drop
+- **Sortable, searchable table** of lemmas with rank, count, part of speech, English translation, forms seen and an example sentence
+- **Search in either language**, by any Polish form or English meaning
+- **Filters** for part of speech, minimum count and stopwords
+- **Coverage stat**, such as "the top 500 lemmas cover 68.6% of the book"
+- **CSV export** for Anki, with the word, translation and example sentence
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[React frontend] -->|POST /analyze with the file| B[FastAPI]
+
+    subgraph pipeline [Backend pipeline]
+        B --> C["extraction.py<br/>PDF or EPUB to raw text"]
+        C --> D["cleaning.py<br/>hyphenation, headers, page numbers"]
+        D --> E{Text readable?}
+        E -->|No| F[Clear error message]
+        E -->|Yes| G["lemmas.py<br/>spaCy lemmas and part of speech"]
+        G --> H["translations.py<br/>English meaning for each lemma"]
+    end
+
+    H -->|JSON word list| A
+    F -->|422 error| A
+    A --> I[Filter, sort, search and coverage in the browser]
+    I --> J[Anki CSV download]
+```
+
+**Stack:** Python, FastAPI, spaCy (`pl_core_news_lg`), PyMuPDF, ebooklib, BeautifulSoup, React, Vite. Tests use pytest and run on every push with GitHub Actions.
+
+## Setup
+
+You'll need Python 3.15 (developed and tested on this version) and Node.js. Installing the backend downloads the 574 MB Polish language model. Everything runs locally and costs nothing.
+
+### Backend
+
+```bash
+cd backend
+python -m venv .venv
+```
+
+Then install the packages and start the server. On Windows:
+
+```bash
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+On macOS or Linux:
+
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m uvicorn app.main:app --reload
+```
+
+The API runs at `http://127.0.0.1:8000`, with interactive docs at `/docs`.
+
+### Frontend
+
+In a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open `http://localhost:5173` and upload a book. There's a public-domain story to try at `sample/katarynka.epub`.
+
+On Windows, if PowerShell says running scripts is disabled, use `npm.cmd` in place of `npm`.
+
+### Tests
+
+From the `backend` folder, using the same Python as above:
+
+```bash
+python -m pytest
+```
+
+## API
+
+`POST /analyze` takes a file as `multipart/form-data`, plus an optional `exclude_stopwords=true` query parameter.
+
+```json
+{
+  "total_tokens": 3541,
+  "unique_lemmas": 1327,
+  "lemmas": [
+    {
+      "lemma": "mecenas",
+      "count": 33,
+      "rank": 13,
+      "pos": "NOUN",
+      "translation": "patron, sponsor; lawyer, advocate",
+      "forms": ["mecenas", "mecenasa", "mecenasem", "mecenasowi"],
+      "example": "Gdy został mecenasem, czoło, skutkiem natężonej pracy umysłowej, urosło mu aż do ciemienia...",
+      "is_stopword": false
+    }
+  ]
+}
+```
+
+| Status | Meaning |
+|---|---|
+| 400 | The file is corrupt or password-protected |
+| 413 | The file is over the 50 MB limit |
+| 415 | The file isn't a PDF or EPUB |
+| 422 | No readable text, such as a scanned book or a damaged text layer |
+
+## Design decisions
+
+**A separate module for each stage.** Extraction, cleaning and lemmatization each have one job, take plain data and return plain data. That means each can be tested without the others, and the web layer stays thin.
+
+**Refuse damaged PDFs instead of guessing.** A PDF can look perfect on screen while its hidden text layer is wrong. In one real PDF, every `j` came out as the Telugu letter `గ`, and some spaces vanished, so `Inaczej świat` became `Inaczeగświat`. That can't be reliably repaired, and a confident list of fake words would be worse for a learner than an error. The app checks for this before running spaCy, so a bad file fails in about a second.
+
+**Process long books in small pieces, one at a time.** spaCy's memory use grows with text size. Measured on a 780,000-character novel, 20,000-character chunks processed one at a time used 79 MB on top of the model, compared with about 2,600 MB for larger chunks at spaCy's default batch size, at about the same speed. Chunking alone wasn't enough, because spaCy's default batching groups the chunks back together.
+
+**Clean up spaCy's output.** spaCy turns `myślałem` ("I thought") into `myśleć być`, because Polish past-tense endings behave like an attached form of "to be". The app keeps only the first word, so these count as `myśleć`. It also gives each lemma one stopword answer, since spaCy's list holds word forms and flags `mam` but not `masz`.
+
+**Filter in the browser, not on the server.** Analyzing a novel takes about 30 seconds, while filtering takes a fraction of one. The API returns every lemma with its stopword flag, so filters respond straight away without re-analyzing the book.
+
+**Measure coverage honestly.** Coverage is always a share of every counted word in the book. Hiding stopwords lowers the figure, from 68.6% to 25.3% for the top 500 in *Lalka*, rather than making it look better.
+
+**Draw 200 table rows at a time.** A novel produces over 12,000 lemmas. Drawing them all made filter changes about 3.5 times slower, so the table draws 200 and offers "Show more", while search, filters and export still use the full list.
+
+**A dictionary rather than machine translation.** A lone word has no context, so a translator has to guess, while a dictionary can show that `zamek` means both "lock" and "castle". English meanings come from Wiktionary, which is free, works offline and sends nothing to a third party. They cover 95% of the word occurrences in *Lalka*.
+
+**Automatic rules, plus a small reviewed list for common words.** Rules handle over 145,000 words, but they get some common ones wrong. So about 180 hand-written fixes are applied on top, in [`translation_overrides.json`](backend/data/translation_overrides.json). The words to review were chosen from a frequency list of contemporary Polish rather than from one novel, which would skew toward its own vocabulary.
+
+**Never store uploads.** Books are processed in memory and discarded, apart from a temporary file for EPUB parsing that's deleted straight away. `.gitignore` also blocks PDFs and EPUBs outside `sample/`, so copyrighted books can't be committed by accident.
+
+## Limitations
+
+- **Lemmatization isn't perfect.** spaCy's model makes mistakes, especially on rare words and older spelling, such as giving `rubl` rather than `rubel`. Characters' names are sometimes tagged as ordinary words.
+- **Translations don't use context.** `mecenas` shows both "patron" and "lawyer", but only one applies in a given book. Each entry shows at most two meanings, so a less common one may be missing, and the example sentence is there to help. About 30% of a novel's distinct words have no translation, though they make up only 5% of its word occurrences.
+- **Hand-written translations are unverified.** They haven't been reviewed by a native speaker.
+- **Word meanings can be merged.** `wybory` is counted under `wybór` ("choice"), so its separate meaning of "elections" isn't shown.
+- **PDF cleaning has only been tested at full length on a generated PDF.** It was checked by laying out a novel with headers, page numbers and hyphenation, then comparing the results to its EPUB. Real PDFs from other publishers may differ, and their footnotes will be counted as text.
+- **Publisher material can be counted.** Footnotes, title pages and notices are removed for standard EPUB markup and for Wolne Lektury books, but other publishers' front and back matter will be included.
+- **Scanned books aren't supported,** because they have no text layer and would need OCR.
+- **Only the backend has automated tests.** The frontend was tested by hand in a browser.
+- **Stopwords come from spaCy's list,** which includes some useful words, such as `pan` ("sir").
+- **Language isn't detected.** An English book would produce a meaningless list rather than an error.
+
+## Future ideas
+
+- **Distinctive words:** compare a book's frequencies with Polish in general, to surface the words that are unusually common in this particular book
+- **Known-words list:** hide words you've already learned, and show what coverage you'd reach by learning the next 100
+- **Choosing the right meaning from context,** using word-sense disambiguation
+- **OCR** for scanned books
+- **A live demo** on a free host such as Hugging Face Spaces, which would need to fit the model's roughly 1 GB memory use
+- **Frontend tests** for filtering, sorting and CSV export
+
+## Data and licenses
+
+- **Sample book:** *Katarynka* by Bolesław Prus, public domain, from [Wolne Lektury](https://wolnelektury.pl/katalog/lektura/katarynka/). See [`sample/README.md`](sample/README.md).
+- **Translations:** derived from [English Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/), under CC BY-SA 4.0. See [`backend/data/README.md`](backend/data/README.md).
+- **Language model:** spaCy's `pl_core_news_lg` is GPL-3.0 licensed. It's downloaded during setup and isn't included in this repository.
