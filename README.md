@@ -176,7 +176,9 @@ python -m pytest
 - **A live demo** on a free host such as Hugging Face Spaces, which would need to fit the model's roughly 1 GB memory use
 - **Frontend tests** for filtering, sorting and CSV export
 
-## Data and licenses
+## License
+
+This project's code is licensed under the [GNU General Public License v3.0](LICENSE). The data below keeps its own license.
 
 - **Sample book:** *Katarynka* by Bolesław Prus, public domain, from [Wolne Lektury](https://wolnelektury.pl/katalog/lektura/katarynka/). See [`sample/README.md`](sample/README.md).
 - **Translations:** derived from [English Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/), under CC BY-SA 4.0. See [`backend/data/README.md`](backend/data/README.md).
