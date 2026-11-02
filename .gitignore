@@ -1,0 +1,29 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+*.local
+
+# Uploaded books: never commit these, they may be copyrighted.
+uploads/
+backend/uploads/
+*.pdf
+*.epub
+# The one exception: our checked public-domain sample.
+!sample/*.epub
+
+# Editor and OS clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local secrets, if any are ever added
+.env

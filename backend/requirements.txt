@@ -1,0 +1,17 @@
+# Web API
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+python-multipart==0.0.33
+
+# Text extraction
+pymupdf==1.28.2
+ebooklib==0.21
+beautifulsoup4==4.15.0
+
+# Lemmatization: spaCy plus its trained Polish model (GPL-3.0, 574 MB, hosted on GitHub)
+spacy==3.8.18
+pl_core_news_lg @ https://github.com/explosion/spacy-models/releases/download/pl_core_news_lg-3.8.0/pl_core_news_lg-3.8.0-py3-none-any.whl
+
+# Testing
+pytest==9.2.0
+httpx==0.28.1
