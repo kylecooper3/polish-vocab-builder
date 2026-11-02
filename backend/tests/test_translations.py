@@ -1,5 +1,7 @@
-from app.translations import load_translations, translate
-from scripts.build_translations import build_table, clean_meaning
+import json
+
+from app.translations import OVERRIDES_FILE, apply_overrides, load_translations, translate
+from scripts.build_translations import KEPT_POS, build_table, clean_meaning
 
 
 def _sense(gloss, raw=None, tags=None, **extra):
@@ -185,6 +187,45 @@ def test_translate_returns_empty_for_unknown_words():
     assert translate("xyz", "NOUN", {}) == ""
 
 
+def test_override_replaces_only_the_part_of_speech_it_names():
+    table = {"pan": {"noun": "lord", "pron": "you"}}
+    apply_overrides(table, {"pan": {"noun": "Mr, sir"}})
+    assert table["pan"] == {"noun": "Mr, sir", "pron": "you"}
+
+
+def test_override_can_add_a_missing_word():
+    assert apply_overrides({}, {"i": {"conj": "and"}}) == {"i": {"conj": "and"}}
+
+
+def test_every_override_uses_a_real_part_of_speech_and_says_something():
+    # A typo here would do nothing, without any error, so the fix would silently not apply.
+    overrides = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
+    assert overrides
+    for word, entry in overrides.items():
+        assert word == word.lower()
+        for pos, translation in entry.items():
+            assert pos in KEPT_POS, word
+            assert translation.strip(), word
+
+
+def test_overrides_win_over_the_automatic_translation():
+    table = load_translations()
+    assert translate("pies", "NOUN", table) == "dog"
+    assert translate("drzewo", "NOUN", table).startswith("tree")
+    assert translate("zwykle", "ADV", table) == "usually"
+    assert translate("to", "PRON", table) == "this, that, it"
+
+
+def test_clean_meaning_drops_notes_in_square_brackets():
+    assert clean_meaning("it is known [with o (+ locative)]") == "it is known"
+
+
+def test_leftover_wiki_markup_is_dropped():
+    gloss = "to arise, to develop; {{syn of|pl|stać|t=to happen"
+    table = build_table([_record("powstać", "verb", _sense(gloss))])
+    assert table["powstać"]["verb"] == "to arise, to develop"
+
+
 def test_real_data_has_the_words_that_needed_special_handling():
     table = load_translations()
     assert translate("i", "CCONJ", table) == "and"
@@ -201,3 +242,5 @@ def test_real_data_has_the_words_that_needed_special_handling():
     assert translate("od", "ADP", table).startswith("from")
     assert "lawyer" in translate("mecenas", "NOUN", table)
     assert translate("zamek", "NOUN", table) == "lock; castle"
+    # No raw wiki markup should reach the app, for any of the 145,000 words.
+    assert "{{" not in json.dumps(table, ensure_ascii=False)

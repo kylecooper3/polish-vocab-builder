@@ -35,15 +35,9 @@ MAX_WORDS_IN_TERM = 4
 # Grammar notes, such as "denotes inessive position" for "w" ("in").
 EXPLANATION = re.compile(
     r"^(denotes|indicates|used|introduces|emphasizes|expressing|often|first[- ]person|"
-    r"second[- ]person|third[- ]person)\b|\b(pronoun|particle)$|…"
+    r"second[- ]person|third[- ]person)\b|\b(pronoun|particle)$|…|\{\{"
 )
 INLINE_NOTE = re.compile(r"\s(?=denotes\s|indicates\s)")
-
-# Common words missing from the source data. In testing, "i" ("and"), the most
-# frequent word in a full novel, had no Polish entry at all.
-MANUAL_ENTRIES = {
-    "i": {"conj": "and"},
-}
 
 # 'female equivalent of pan (“Mrs; miss”) (title)' carries its meaning in the quotes.
 QUOTED_MEANING = re.compile(r"\(“(.+?)”\)")
@@ -51,8 +45,8 @@ RELATED_WORD = re.compile(r"^synonym of (\S+)")
 
 
 def clean_meaning(gloss: str) -> str:
-    """Shorten 'dog (Canis lupus familiaris)' to 'dog'."""
-    meaning = gloss.split(" (")[0].strip().rstrip(":;,")
+    """Shorten 'dog (Canis lupus familiaris)' to 'dog', and 'to know [with o]' to 'to know'."""
+    meaning = gloss.split(" (")[0].split(" [")[0].strip().rstrip(":;,")
     if len(meaning) > MAX_MEANING_LENGTH:
         meaning = meaning[:MAX_MEANING_LENGTH].rsplit(" ", 1)[0] + "…"
     return meaning
@@ -180,8 +174,6 @@ def build_table(records) -> dict[str, dict[str, str]]:
                 # printed dictionary: "patron, sponsor; lawyer, advocate".
                 table[word][pos] = "; ".join(meanings)
 
-    for word, entry in MANUAL_ENTRIES.items():
-        table[word].update(entry)
     return dict(table)
 
 
