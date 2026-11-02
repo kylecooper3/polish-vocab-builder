@@ -12,6 +12,21 @@ def test_inflected_forms_count_as_one_lemma(nlp):
     assert entry.pos == "VERB"
 
 
+def test_past_tense_forms_join_their_real_lemma(nlp):
+    result = analyze_text("Myślałem o tym. On myśli o psie. Chciałbym iść. Miałeś dom.", nlp)
+    lemmas = {entry.lemma for entry in result.lemmas}
+    assert not any(" " in lemma for lemma in lemmas)
+    assert {"myśleć", "chcieć", "mieć"} <= lemmas
+    assert _entry(result, "myśleć").count == 2
+    assert set(_entry(result, "myśleć").forms) == {"myślałem", "myśli"}
+
+
+def test_entries_include_a_translation(nlp):
+    result = analyze_text("Mój pies lubi dom.", nlp)
+    assert "dog" in _entry(result, "pies").translation
+    assert "house" in _entry(result, "dom").translation
+
+
 def test_filters_punctuation_digits_and_proper_nouns(nlp):
     result = analyze_text("Anna kupiła w Warszawie 12 książek, a potem wróciła.", nlp)
     lemmas = {entry.lemma for entry in result.lemmas}

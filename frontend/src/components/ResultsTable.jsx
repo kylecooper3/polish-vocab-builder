@@ -45,6 +45,7 @@ function ResultsTable({ rows, sortKey, sortDirection, onSort }) {
                   </th>
                 )
               })}
+              <th>Translation</th>
               <th>Forms seen</th>
               <th>Example</th>
             </tr>
@@ -59,6 +60,8 @@ function ResultsTable({ rows, sortKey, sortDirection, onSort }) {
                 </td>
                 <td className="number">{entry.count}</td>
                 <td>{posLabel(entry.pos)}</td>
+                {/* "||" uses the right side when the left is empty: not every word has a translation. */}
+                <td className="translation">{entry.translation || '—'}</td>
                 <td lang="pl" className="forms">{entry.forms.join(', ')}</td>
                 <td lang="pl" className="example">{entry.example}</td>
               </tr>

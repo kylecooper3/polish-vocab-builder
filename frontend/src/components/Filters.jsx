@@ -12,7 +12,7 @@ function Filters({ search, onSearchChange, filters, onFilterChange, posCodes }) 
             keystroke calls onChange to update the state. */}
         <input
           type="search"
-          placeholder="Lemma or any form, e.g. psa"
+          placeholder="Any Polish form or English meaning"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
         />

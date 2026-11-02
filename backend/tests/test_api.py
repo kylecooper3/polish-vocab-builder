@@ -27,7 +27,9 @@ def test_pdf_upload_returns_lemma_list(client, make_pdf):
 
     entry = next(item for item in body["lemmas"] if item["lemma"] == "mieć")
     assert entry["count"] == 3
-    assert set(entry) == {"lemma", "count", "rank", "pos", "forms", "example", "is_stopword"}
+    assert set(entry) == {
+        "lemma", "count", "rank", "pos", "translation", "forms", "example", "is_stopword",
+    }
 
 
 def test_epub_upload_returns_lemma_list(client, make_epub):

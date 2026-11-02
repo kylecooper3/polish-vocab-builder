@@ -37,14 +37,16 @@ export function applyFilters(lemmas, { pos, minCount, hideStopwords }) {
   )
 }
 
-// Finds a word by its dictionary form or by any form seen in the book,
-// so searching "psa" finds "pies" if that form appeared.
+// Finds a word by its dictionary form, any form seen in the book, or its English
+// meaning. So "dog" finds "pies", and so does "psa" if the book uses that form.
 export function searchLemmas(lemmas, query) {
   const text = query.trim().toLowerCase()
   if (!text) return lemmas
   return lemmas.filter(
     (entry) =>
-      entry.lemma.includes(text) || entry.forms.some((form) => form.includes(text)),
+      entry.lemma.includes(text) ||
+      entry.forms.some((form) => form.includes(text)) ||
+      entry.translation.toLowerCase().includes(text),
   )
 }
 
@@ -59,12 +61,17 @@ export function sortLemmas(lemmas, key, direction) {
   return direction === 'asc' ? sorted : sorted.reverse()
 }
 
-// CSV format for importing into Anki: one card per line, front then back. There's no
-// header row because Anki would turn it into a flashcard. Doubling any quote mark and
-// wrapping each field in quotes stops commas or quotes in a sentence breaking the columns.
+// CSV format for importing into Anki: one card per line, with the word, its translation
+// and an example. There's no header row because Anki would turn it into a flashcard.
+// Doubling any quote mark and wrapping each field in quotes stops commas or quotes in
+// a sentence breaking the columns.
 export function toAnkiCsv(lemmas) {
   const quote = (text) => `"${text.replaceAll('"', '""')}"`
-  return lemmas.map((entry) => `${quote(entry.lemma)},${quote(entry.example)}`).join('\n') + '\n'
+  return (
+    lemmas
+      .map((entry) => [entry.lemma, entry.translation, entry.example].map(quote).join(','))
+      .join('\n') + '\n'
+  )
 }
 
 // Browsers have no "save file" function for text made in the page. So we wrap the text

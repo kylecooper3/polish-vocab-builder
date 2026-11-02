@@ -19,6 +19,9 @@ backend/uploads/
 # The one exception: our checked public-domain sample.
 !sample/*.epub
 
+# The raw Wiktionary download, 860 MB. Only the small built file is committed.
+*.jsonl
+
 # Editor and OS clutter
 .claude/
 .vscode/

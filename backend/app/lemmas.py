@@ -8,6 +8,8 @@ import spacy
 from pydantic import BaseModel
 from spacy.language import Language
 
+from app.translations import load_translations, translate
+
 MODEL_NAME = "pl_core_news_lg"
 
 # spaCy refuses single texts over 1,000,000 characters by default, because its
@@ -30,6 +32,7 @@ class LemmaEntry(BaseModel):
     count: int
     rank: int
     pos: str
+    translation: str
     forms: list[str]
     example: str
     is_stopword: bool
@@ -105,9 +108,13 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
             for token in sentence:
                 if not token.is_alpha or token.pos_ in EXCLUDED_POS:
                     continue
-                lemma = token.lemma_.lower()
-                if not lemma:
+                # spaCy turns "myślałem" into "myśleć być", because Polish past-tense
+                # endings work like a stuck-on "to be". Without this, "myśleć" would be
+                # counted as two separate words. The first word is the real lemma.
+                lemma_parts = token.lemma_.lower().split()
+                if not lemma_parts:
                     continue
+                lemma = lemma_parts[0]
 
                 tally = tallies.setdefault(lemma, _Tally())
                 tally.count += 1
@@ -124,12 +131,14 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
 
     # Sorting by lemma as well makes ties come out in the same order every run.
     ordered = sorted(tallies.items(), key=lambda item: (-item[1].count, item[0]))
+    translations = load_translations()
     entries = [
         LemmaEntry(
             lemma=lemma,
             count=tally.count,
             rank=rank,
             pos=tally.pos.most_common(1)[0][0],
+            translation=translate(lemma, tally.pos.most_common(1)[0][0], translations),
             forms=[form for form, _ in tally.forms.most_common()],
             example=tally.example,
             is_stopword=_is_stopword(lemma, tally, nlp),

@@ -331,6 +331,10 @@ th button:hover {
   font-size: 0.72rem;
 }
 
+.translation {
+  min-width: 170px;
+}
+
 .forms {
   min-width: 170px;
   color: var(--muted);
