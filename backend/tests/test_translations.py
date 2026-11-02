@@ -26,7 +26,19 @@ def test_plain_meanings_beat_regional_ones():
         _record("pies", "noun", _sense("dog (Canis)"), _sense("male fox", raw="(hunting) male fox")),
         _record("pies", "noun", _sense("chaff stick", raw="(Western Kraków) chaff stick")),
     ])
-    assert table["pies"]["noun"] == "dog"
+    assert "chaff stick" not in table["pies"]["noun"]
+    assert table["pies"]["noun"].startswith("dog")
+
+
+def test_subject_labels_are_ordinary_meanings():
+    table = build_table([
+        _record(
+            "mecenas", "noun",
+            _sense("patron, sponsor", raw="(art) patron, sponsor"),
+            _sense("lawyer, advocate", raw="(law) lawyer, advocate"),
+        ),
+    ])
+    assert table["mecenas"]["noun"] == "patron, sponsor; lawyer, advocate"
 
 
 def test_specialist_meaning_is_kept_when_there_is_nothing_else():
@@ -39,12 +51,24 @@ def test_each_records_first_meaning_comes_first():
         _record("zamek", "noun", _sense("lock"), _sense("zip")),
         _record("zamek", "noun", _sense("castle")),
     ])
-    assert table["zamek"]["noun"] == "lock, castle, zip"
+    assert table["zamek"]["noun"] == "lock; castle"
 
 
-def test_keeps_at_most_four_terms():
+def test_keeps_at_most_two_senses():
     table = build_table([_record("x", "noun", *(_sense(word) for word in "abcdef"))])
-    assert table["x"]["noun"] == "a, b, c, d"
+    assert table["x"]["noun"] == "a; b"
+
+
+def test_keeps_at_most_two_synonyms_per_sense():
+    table = build_table([_record("x", "noun", _sense("a, b, c"), _sense("d, e, f"))])
+    assert table["x"]["noun"] == "a, b; d, e"
+
+
+def test_a_sense_that_only_repeats_earlier_terms_does_not_use_up_a_slot():
+    table = build_table([
+        _record("x", "noun", _sense("head (body part)"), _sense("head (leader)"), _sense("mind")),
+    ])
+    assert table["x"]["noun"] == "head; mind"
 
 
 def test_grammar_labels_do_not_count_as_specialist():
@@ -84,7 +108,7 @@ def test_repeated_terms_appear_once():
     table = build_table([
         _record("człowiek", "noun", _sense("man, human"), _sense("person"), _sense("man")),
     ])
-    assert table["człowiek"]["noun"] == "man, human, person"
+    assert table["człowiek"]["noun"] == "man, human; person"
 
 
 def test_grammar_notes_are_dropped_when_a_translation_exists():
@@ -92,7 +116,7 @@ def test_grammar_notes_are_dropped_when_a_translation_exists():
         _record("w", "prep", _sense("denotes inessive position; in, at, on")),
         _record("nie", "particle", _sense("negation particle; no, not")),
     ])
-    assert table["w"]["prep"] == "in, at, on"
+    assert table["w"]["prep"] == "in, at"
     assert table["nie"]["particle"] == "no, not"
 
 
@@ -175,3 +199,5 @@ def test_real_data_has_the_words_that_needed_special_handling():
     assert translate("w", "ADP", table).startswith("in")
     assert translate("oko", "NOUN", table).startswith("eye")
     assert translate("od", "ADP", table).startswith("from")
+    assert "lawyer" in translate("mecenas", "NOUN", table)
+    assert translate("zamek", "NOUN", table) == "lock; castle"

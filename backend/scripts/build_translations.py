@@ -24,14 +24,9 @@ SPECIALIST_TAGS = {
     "archaic", "dated", "dialectal", "derogatory", "obsolete", "offensive", "rare", "slang", "vulgar",
 }
 
-# Bracketed labels about grammar, not about the meaning being unusual. In testing, treating
-# these as specialist threw away "to speak" and left "mówić" translated as "to pray".
-GRAMMAR_QUALIFIERS = {
-    "ambitransitive", "imperfective", "impersonal", "intransitive", "perfective", "reflexive",
-    "stative", "transitive",
-}
-
-MAX_TERMS = 4
+# Enough to show that "zamek" means both "lock" and "castle", while keeping flashcards short.
+MAX_SENSES = 2
+MAX_SYNONYMS = 2
 MAX_MEANING_LENGTH = 80
 
 # A term this long is usually describing a word rather than translating it.
@@ -88,18 +83,23 @@ def classify_sense(sense: dict) -> tuple[str, str]:
 
 
 def has_specialist_label(sense: dict) -> bool:
-    """Is there a bracketed label like "(hunting)" or "(Biecz)", not just "(transitive)"?"""
+    """Is there a capitalized bracketed label, which marks a place, as in "(Biecz)"?
+
+    Lowercase labels such as "(transitive)", "(law)" or "(anatomy)" describe grammar or
+    a subject, and those are ordinary meanings: "mecenas" really does mean "lawyer".
+    """
     label = re.match(r"\((.+?)\)", sense.get("raw_glosses", [""])[0])
     if not label:
         return False
-    parts = (part.strip().lower() for part in re.split(r",| or ", label.group(1)))
-    return any(part not in GRAMMAR_QUALIFIERS for part in parts)
+    return any(part.strip()[:1].isupper() for part in re.split(r",| or ", label.group(1)))
 
 
-def split_into_terms(meanings: list[str]) -> list[str]:
-    """Turn "man, human; person; man" into short terms, with no repeats or grammar notes."""
-    terms = []
+def split_into_senses(meanings: list[str]) -> list[str]:
+    """Pick the first few senses, as short synonyms with no repeats or grammar notes."""
+    senses = []
+    seen = set()
     for meaning in meanings:
+        terms = []
         for part in re.split(r";|" + INLINE_NOTE.pattern, meaning):
             # Checked before splitting on commas, so a note like "indicates separation,
             # distance" goes as a whole rather than leaving "distance" behind.
@@ -107,13 +107,26 @@ def split_into_terms(meanings: list[str]) -> list[str]:
                 continue
             for term in part.split(","):
                 term = term.strip()
-                if term and term not in terms and not EXPLANATION.search(term):
+                if (
+                    term
+                    and term not in seen
+                    and term not in terms
+                    and not EXPLANATION.search(term)
+                    and len(term.split()) <= MAX_WORDS_IN_TERM
+                ):
                     terms.append(term)
 
-    useful = [term for term in terms if len(term.split()) <= MAX_WORDS_IN_TERM]
+        # A sense that only repeats earlier terms adds nothing, so it doesn't use up a slot.
+        if terms:
+            terms = terms[:MAX_SYNONYMS]
+            seen.update(terms)
+            senses.append(", ".join(terms))
+        if len(senses) == MAX_SENSES:
+            break
+
     # If a word only has an explanation, like "to" ("used to point to..."), that's still
     # better than nothing, so keep the whole first meaning.
-    return useful or meanings[:1]
+    return senses or meanings[:1]
 
 
 def choose_meanings(records: list[list[str]]) -> list[str]:
@@ -127,7 +140,7 @@ def choose_meanings(records: list[list[str]]) -> list[str]:
         for meanings in records:
             if position < len(meanings):
                 ordered.append(meanings[position])
-    return split_into_terms(ordered)[:MAX_TERMS]
+    return split_into_senses(ordered)
 
 
 def build_table(records) -> dict[str, dict[str, str]]:
@@ -141,16 +154,8 @@ def build_table(records) -> dict[str, dict[str, str]]:
         if not word or pos not in KEPT_POS:
             continue
         found = {"plain": [], "specialist": [], "link": []}
-        for index, sense in enumerate(record.get("senses", [])):
+        for sense in record.get("senses", []):
             kind, value = classify_sense(sense)
-            # Wiktionary lists the main meaning first. "oko" ("eye") is labeled as anatomy,
-            # and dropping it as specialist left "shiny surface of water". So the first
-            # meaning of a word's first record stays, unless it's slang, archaic and so on.
-            is_main_meaning = index == 0 and not plain[word][pos]
-            if kind == "specialist" and is_main_meaning and not (
-                SPECIALIST_TAGS & set(sense.get("tags", []))
-            ):
-                kind = "plain"
             if kind != "skip" and value:
                 found[kind].append(value)
         plain[word][pos].append(found["plain"])
@@ -171,7 +176,9 @@ def build_table(records) -> dict[str, dict[str, str]]:
                     break
                 meanings = direct_meanings(target, pos)
             if meanings:
-                table[word][pos] = ", ".join(meanings)
+                # Commas separate synonyms and semicolons separate meanings, as in a
+                # printed dictionary: "patron, sponsor; lawyer, advocate".
+                table[word][pos] = "; ".join(meanings)
 
     for word, entry in MANUAL_ENTRIES.items():
         table[word].update(entry)
