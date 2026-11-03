@@ -1,7 +1,13 @@
 import json
 
-from app.translations import OVERRIDES_FILE, apply_overrides, load_translations, translate
-from scripts.build_translations import KEPT_POS, build_table, clean_meaning
+from app.translations import (
+    OVERRIDES_FILE,
+    apply_overrides,
+    load_translations,
+    load_verb_forms,
+    translate,
+)
+from scripts.build_translations import KEPT_POS, build_table, build_verb_forms, clean_meaning
 
 
 def _sense(gloss, raw=None, tags=None, **extra):
@@ -195,6 +201,43 @@ def test_override_replaces_only_the_part_of_speech_it_names():
 
 def test_override_can_add_a_missing_word():
     assert apply_overrides({}, {"i": {"conj": "and"}}) == {"i": {"conj": "and"}}
+
+
+def _verb(word, *forms):
+    return {"word": word, "pos": "verb", "forms": [{"form": f, "tags": t} for f, t in forms]}
+
+
+def test_verb_forms_map_to_their_dictionary_word():
+    table = build_verb_forms([_verb("pójść", ("poszedłem", ["past", "singular"]))])
+    assert table == {"poszedłem": "pójść"}
+
+
+def test_verb_forms_skip_a_verbs_partner_and_template_notes():
+    table = build_verb_forms([
+        _verb("pójść", ("iść", ["imperfective"]), ("l", ["inflection-template"]), ("pójdę", ["future"])),
+    ])
+    assert table == {"pójdę": "pójść"}
+
+
+def test_verb_forms_leave_out_a_form_shared_by_two_verbs():
+    table = build_verb_forms([_verb("stać", ("stanę", ["future"])), _verb("stanąć", ("stanę", ["future"]))])
+    assert table == {}
+
+
+def test_verb_forms_ignore_other_parts_of_speech_and_phrases():
+    records = [
+        {"word": "pies", "pos": "noun", "forms": [{"form": "psa", "tags": ["genitive"]}]},
+        _verb("pójść", ("pójdzie się", ["impersonal"])),
+    ]
+    assert build_verb_forms(records) == {}
+
+
+def test_real_verb_form_data_has_the_irregular_forms():
+    forms = load_verb_forms()
+    assert forms["poszedłem"] == "pójść"
+    assert forms["rzekłem"] == "rzec"
+    assert forms["jadłem"] == "jeść"
+    assert forms["mogłem"] == "móc"
 
 
 def test_every_override_uses_a_real_part_of_speech_and_says_something():

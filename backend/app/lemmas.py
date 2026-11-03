@@ -8,7 +8,7 @@ import spacy
 from pydantic import BaseModel
 from spacy.language import Language
 
-from app.translations import load_translations, translate
+from app.translations import load_translations, load_verb_forms, translate
 
 MODEL_NAME = "pl_core_news_lg"
 
@@ -24,7 +24,13 @@ EXCLUDED_POS = {"PROPN", "PUNCT", "SYM", "X", "SPACE"}
 
 # Lemmas counted as another word. spaCy treats "wybory" as its own word, but it's also
 # the plural of "wybór" ("choice"). Merging means its "elections" meaning isn't listed.
-LEMMA_MERGES = {"wybory": "wybór"}
+LEMMA_MERGES = {"wybory": "wybór", "zdrów": "zdrowy"}
+
+VERB_POS = {"VERB", "AUX"}
+
+# Words spaCy can wrongly tag as verbs that also match a form in the verb tables, such
+# as "zdrów" ("healthy"), which would otherwise become "zdrowić" ("to heal").
+NOT_VERB_FORMS = {"zdrów", "dziw"}
 
 # Sentences of this length make the best flashcard examples.
 MIN_EXAMPLE_WORDS = 5
@@ -97,9 +103,24 @@ def split_into_chunks(text: str, max_chars: int = CHUNK_SIZE) -> list[str]:
     return chunks
 
 
+def fix_verb_lemma(form: str, lemma: str, pos: str, verb_forms: dict, translations: dict) -> str:
+    """Replace a verb lemma that looks wrong with the dictionary word for its form.
+
+    spaCy sometimes guesses a stem that doesn't exist ("poszedłem" gives "poszedć"), or
+    just returns the word unchanged ("mógłbym"). Any other verb keeps spaCy's answer.
+    """
+    if pos not in VERB_POS or form in NOT_VERB_FORMS:
+        return lemma
+    if lemma in translations and lemma != form:
+        return lemma
+    return verb_forms.get(form, lemma)
+
+
 def analyze_text(text: str, nlp) -> AnalysisResult:
     tallies: dict[str, _Tally] = {}
     total_tokens = 0
+    translations = load_translations()
+    verb_forms = load_verb_forms()
 
     # By default nlp.pipe groups up to 1,000 texts into a batch, which would process
     # every chunk at once and undo the memory saving of splitting the text.
@@ -118,7 +139,10 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
                 lemma_parts = token.lemma_.lower().split()
                 if not lemma_parts:
                     continue
-                lemma = LEMMA_MERGES.get(lemma_parts[0], lemma_parts[0])
+                lemma = fix_verb_lemma(
+                    token.lower_, lemma_parts[0], token.pos_, verb_forms, translations
+                )
+                lemma = LEMMA_MERGES.get(lemma, lemma)
 
                 tally = tallies.setdefault(lemma, _Tally())
                 tally.count += 1
@@ -135,7 +159,6 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
 
     # Sorting by lemma as well makes ties come out in the same order every run.
     ordered = sorted(tallies.items(), key=lambda item: (-item[1].count, item[0]))
-    translations = load_translations()
     entries = [
         LemmaEntry(
             lemma=lemma,

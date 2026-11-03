@@ -1,5 +1,6 @@
 """Look up an English translation for a Polish lemma."""
 
+import gzip
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -9,6 +10,8 @@ DATA_FILE = DATA_FOLDER / "translations.json"
 
 # Hand-written fixes for common words, where a learner would notice a poor translation.
 OVERRIDES_FILE = DATA_FOLDER / "translation_overrides.json"
+
+VERB_FORMS_FILE = DATA_FOLDER / "verb_forms.json.gz"
 
 # spaCy and Wiktionary name parts of speech differently, and don't always agree. Where
 # they disagree, such as "więc" (SCONJ in spaCy, a particle in Wiktionary), the fallback
@@ -35,6 +38,12 @@ def load_translations() -> dict[str, dict[str, str]]:
     table = json.loads(DATA_FILE.read_text(encoding="utf-8"))
     overrides = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
     return apply_overrides(table, overrides)
+
+
+@lru_cache(maxsize=1)
+def load_verb_forms() -> dict[str, str]:
+    """Verb forms and their dictionary words, such as {"poszedłem": "pójść"}."""
+    return json.loads(gzip.decompress(VERB_FORMS_FILE.read_bytes()))
 
 
 def apply_overrides(table: dict, overrides: dict) -> dict:

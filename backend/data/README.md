@@ -9,6 +9,10 @@
 - **Changes:** selected, shortened and reformatted by this project.
 - **License:** this file is shared under the [Creative Commons Attribution-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/). This covers the data file only, not the rest of the project's code.
 
+## Verb forms
+
+`verb_forms.json.gz` maps Polish verb forms to their dictionary words, such as `poszedłem` to `pójść`. It's built by the same script from the conjugation tables in the same source, and is shared under the same license. The app uses it to correct verb lemmas that spaCy gets wrong.
+
 ## Hand-written fixes
 
 `translation_overrides.json` holds fixes for common words where the automatic result was poor or missing. These entries are written by hand rather than taken from Wiktionary, and they replace the automatic translation when the app loads. To change one, edit the file and restart the backend. No rebuild is needed.

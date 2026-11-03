@@ -8,6 +8,7 @@ from the backend folder, run:
     python -m scripts.build_translations path/to/kaikki.org-dictionary-Polish.jsonl
 """
 
+import gzip
 import json
 import re
 import sys
@@ -15,6 +16,11 @@ from collections import defaultdict
 from pathlib import Path
 
 OUTPUT_FILE = Path(__file__).parent.parent / "data" / "translations.json"
+VERB_FORMS_FILE = OUTPUT_FILE.parent / "verb_forms.json.gz"
+
+# Entries in a verb's table that aren't forms of that verb.
+ASPECT_TAGS = {"imperfective", "perfective"}
+NON_FORM_TAGS = {"table-tags", "inflection-template", "class", "canonical", "romanization"}
 
 # Names, letters, prefixes and so on aren't vocabulary a learner looks up here.
 KEPT_POS = {"noun", "verb", "adj", "adv", "prep", "conj", "pron", "det", "num", "particle", "intj"}
@@ -177,9 +183,36 @@ def build_table(records) -> dict[str, dict[str, str]]:
     return dict(table)
 
 
+def build_verb_forms(records) -> dict[str, str]:
+    """Map each verb form to its dictionary word: {"poszedłem": "pójść"}.
+
+    A form that could belong to several verbs is left out, because a wrong guess
+    would be worse than keeping spaCy's answer.
+    """
+    candidates = defaultdict(set)
+    for record in records:
+        word = record.get("word", "").lower()
+        if not word or record.get("pos") != "verb":
+            continue
+        for entry in record.get("forms", []):
+            form = (entry.get("form") or "").lower()
+            tags = set(entry.get("tags", []))
+            # Tables also list a verb's partner ("pójść" lists "iść") and template notes.
+            if form and " " not in form and not tags <= ASPECT_TAGS and not tags & NON_FORM_TAGS:
+                candidates[form].add(word)
+    return {form: next(iter(words)) for form, words in candidates.items() if len(words) == 1}
+
+
 def main(source: str) -> None:
     with open(source, encoding="utf-8") as handle:
         table = build_table(json.loads(line) for line in handle)
+    with open(source, encoding="utf-8") as handle:
+        verb_forms = build_verb_forms(json.loads(line) for line in handle)
+    # mtime=0 means a rebuild with the same data gives an identical file for Git.
+    VERB_FORMS_FILE.write_bytes(
+        gzip.compress(json.dumps(verb_forms, ensure_ascii=False, sort_keys=True).encode(), mtime=0)
+    )
+    print(f"{len(verb_forms):,} verb forms, {VERB_FORMS_FILE.stat().st_size / 1e6:.1f} MB")
     OUTPUT_FILE.parent.mkdir(exist_ok=True)
     # Sorted, with one word per line, so a rebuild gives a readable Git diff.
     lines = [

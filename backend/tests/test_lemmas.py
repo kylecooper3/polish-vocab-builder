@@ -1,4 +1,4 @@
-from app.lemmas import analyze_text, split_into_chunks
+from app.lemmas import analyze_text, fix_verb_lemma, split_into_chunks
 
 
 def _entry(result, lemma):
@@ -19,6 +19,39 @@ def test_past_tense_forms_join_their_real_lemma(nlp):
     assert {"myśleć", "chcieć", "mieć"} <= lemmas
     assert _entry(result, "myśleć").count == 2
     assert set(_entry(result, "myśleć").forms) == {"myślałem", "myśli"}
+
+
+def test_wrong_verb_stems_are_replaced_with_the_real_lemma(nlp):
+    result = analyze_text("Wtedy poszedłem do domu. Wtedy rzekłem mu to. Wtedy poszedłbym tam.", nlp)
+    lemmas = {entry.lemma for entry in result.lemmas}
+    assert {"pójść", "rzec"} <= lemmas
+    assert not {"poszedć", "rzekć", "poszedłbym"} & lemmas
+
+
+def test_fix_verb_lemma_replaces_a_stem_not_in_the_dictionary():
+    assert fix_verb_lemma("poszedłem", "poszedć", "VERB", {"poszedłem": "pójść"}, {}) == "pójść"
+
+
+def test_fix_verb_lemma_replaces_a_lemma_that_is_just_the_word():
+    forms = {"mógłbym": "móc"}
+    assert fix_verb_lemma("mógłbym", "mógłbym", "VERB", forms, {"mógłbym": {}}) == "móc"
+
+
+def test_fix_verb_lemma_keeps_a_good_lemma():
+    forms = {"mam": "mamić"}
+    assert fix_verb_lemma("mam", "mieć", "VERB", forms, {"mieć": {}}) == "mieć"
+
+
+def test_fix_verb_lemma_skips_words_that_only_look_like_verbs():
+    assert fix_verb_lemma("zdrów", "zdrów", "VERB", {"zdrów": "zdrowić"}, {}) == "zdrów"
+
+
+def test_fix_verb_lemma_only_changes_verbs():
+    assert fix_verb_lemma("psem", "psem", "NOUN", {"psem": "psać"}, {}) == "psem"
+
+
+def test_fix_verb_lemma_keeps_spacys_answer_when_the_form_is_unknown():
+    assert fix_verb_lemma("xyz", "xyzać", "VERB", {}, {}) == "xyzać"
 
 
 def test_wybory_is_counted_as_wybor(nlp):

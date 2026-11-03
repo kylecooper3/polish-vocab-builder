@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.cleaning import clean_pages, looks_garbled
 from app.extraction import UnreadableFileError, UnsupportedFormatError, extract_pages
 from app.lemmas import AnalysisResult, analyze_text, load_model
+from app.translations import load_translations, load_verb_forms
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
@@ -17,8 +18,10 @@ ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load the model at startup so the first user doesn't wait for it.
+    # Load the model and data at startup so the first user doesn't wait for them.
     load_model()
+    load_translations()
+    load_verb_forms()
     yield
 
 
