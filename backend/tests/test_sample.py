@@ -4,7 +4,8 @@ from pathlib import Path
 
 from app.cleaning import clean_pages
 from app.extraction import extract_pages
-from app.lemmas import analyze_text
+from app.lemmas import AnalysisResult, analyze_text
+from scripts.build_demo_data import OUTPUT_FILE, analyze_sample
 
 SAMPLE = Path(__file__).parents[2] / "sample" / "katarynka.epub"
 
@@ -22,6 +23,12 @@ def test_sample_book_produces_a_sensible_word_list(nlp):
     assert len(lemmas["katarynka"].forms) > 1
     example = lemmas["katarynka"].example.lower()
     assert any(form in example for form in lemmas["katarynka"].forms)
+
+
+def test_demo_data_matches_the_current_pipeline():
+    # If this fails, the live demo is out of date: run python -m scripts.build_demo_data
+    saved = AnalysisResult.model_validate_json(OUTPUT_FILE.read_text(encoding="utf-8"))
+    assert saved == analyze_sample()
 
 
 def test_sample_book_excludes_publisher_material(nlp):

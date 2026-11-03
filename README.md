@@ -4,6 +4,8 @@
 
 Upload a Polish book as a PDF or EPUB and get a frequency list of its vocabulary, counted by dictionary form, so you can study the most useful words first. Each word comes with its English meaning, every form seen in the book, and an example sentence, and the list exports to Anki.
 
+**[Try the live demo](https://kylecooper3.github.io/polish-vocab-builder/)**, which has one public-domain story already analyzed. You can filter, search and export, but uploading your own book needs the Python backend, so that only works when you [run the app yourself](#setup).
+
 ![The results screen, showing coverage, filters and a table of Polish words with translations](docs/screenshot.jpg)
 
 ## Why lemmatization matters for Polish
@@ -154,6 +156,8 @@ python -m pytest
 
 **Automatic rules, plus a small reviewed list for common words.** Rules handle over 145,000 words, but they get some common ones wrong. So about 180 hand-written fixes are applied on top, in [`translation_overrides.json`](backend/data/translation_overrides.json). The words to review were chosen from a frequency list of contemporary Polish rather than from one novel, which would skew toward its own vocabulary.
 
+**A static demo instead of a hosted server.** The language model needs a server with about 1.1 GB of memory, which isn't free to keep running everywhere. So the live demo is only the frontend on GitHub Pages, showing results saved ahead of time by the real pipeline. A test fails if those saved results stop matching the pipeline. The trade-off is that visitors can't upload their own book.
+
 **Never store uploads.** Books are processed in memory and discarded, apart from a temporary file for EPUB parsing that's deleted straight away. `.gitignore` also blocks PDFs and EPUBs outside `sample/`, so copyrighted books can't be committed by accident.
 
 ## Limitations
@@ -175,7 +179,7 @@ python -m pytest
 - **Known-words list:** hide words you've already learned, and show what coverage you'd reach by learning the next 100
 - **Choosing the right meaning from context,** using word-sense disambiguation
 - **OCR** for scanned books
-- **A live demo** on a free host such as Hugging Face Spaces, which would need to fit the app's roughly 1.1 GB memory use
+- **A hosted backend** so anyone can upload a book, on a host such as Hugging Face Spaces that can fit the app's roughly 1.1 GB memory use
 - **Frontend tests** for filtering, sorting and CSV export
 
 ## License

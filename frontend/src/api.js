@@ -1,6 +1,16 @@
 // The one place that knows how to talk to the backend.
 const API_URL = 'http://127.0.0.1:8000'
 
+// The live demo has no backend, so it loads results that were saved ahead of time.
+// BASE_URL is the folder the site is hosted in, which on GitHub Pages isn't the root.
+export async function loadDemoResult() {
+  const response = await fetch(`${import.meta.env.BASE_URL}demo/katarynka.json`)
+  if (!response.ok) {
+    throw new Error('Could not load the demo data.')
+  }
+  return response.json()
+}
+
 // "async" means this function can pause at each "await" while waiting on the
 // network, without freezing the page. It works like async/await in Python.
 export async function analyzeBook(file) {
