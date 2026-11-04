@@ -37,6 +37,9 @@ NOT_VERB_FORMS = {"zdrów", "dziw"}
 # like a form of "byl" ("flower stalk") but comes from "byle" ("if only").
 NOT_WORD_FORMS = {"bylem"}
 
+# The forms of "ono" ("it") that aren't also spelled the same as a form of "on" ("he").
+NEUTER_ONLY_FORMS = {"ono", "je"}
+
 # Sentences of this length make the best flashcard examples.
 MIN_EXAMPLE_WORDS = 5
 MAX_EXAMPLE_WORDS = 25
@@ -154,6 +157,31 @@ def fix_verb_lemma(form: str, lemma: str, pos: str, verb_forms: dict, translatio
     return verb_forms.get(form, lemma)
 
 
+def split_pronoun(lemma: str, pos: str, morph, form: str) -> str:
+    """Give "he", "she", "it" and both words for "they" a row each.
+
+    spaCy files all of them under "on", which is a fair grammatical view but shows a
+    learner "ona" under "he". Its gender and number tags say which word was meant. "oni"
+    is only for groups of people including men: "je" for things is tagged masculine
+    plural too, so the human tag is needed as well.
+
+    "it" only uses the spellings that differ from "he". Forms like "jego" and "nim" are
+    the same for both, and in a sample from one novel, 22 of 30 rows tagged neuter were
+    really masculine, so showing them as "it" would mostly be wrong.
+    """
+    if lemma != "on" or pos != "PRON":
+        return lemma
+    gender = morph.get("Gender")
+    number = morph.get("Number")
+    if "Plur" in number:
+        return "oni" if "Masc" in gender and "Hum" in morph.get("Animacy") else "one"
+    if "Sing" in number and "Fem" in gender:
+        return "ona"
+    if "Sing" in number and "Neut" in gender and form in NEUTER_ONLY_FORMS:
+        return "ono"
+    return "on"
+
+
 def find_correct_lemma(tally: _Tally, word_forms: dict, rows_in_book: set[str]) -> str | None:
     """Work out which dictionary word a row belongs to from the forms the book used.
 
@@ -262,6 +290,7 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
                 lemma = fix_verb_lemma(
                     token.lower_, lemma_parts[0], token.pos_, verb_forms, translations
                 )
+                lemma = split_pronoun(lemma, token.pos_, token.morph, token.lower_)
                 lemma = LEMMA_MERGES.get(lemma, lemma)
 
                 tally = tallies.setdefault(lemma, _Tally())

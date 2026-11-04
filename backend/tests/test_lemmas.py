@@ -1,5 +1,9 @@
 from collections import Counter
 
+import pytest
+from spacy.tokens import MorphAnalysis
+from spacy.vocab import Vocab
+
 from app.lemmas import (
     _Tally,
     analyze_text,
@@ -7,6 +11,7 @@ from app.lemmas import (
     find_correct_lemma,
     fix_verb_lemma,
     split_into_chunks,
+    split_pronoun,
 )
 
 
@@ -361,3 +366,64 @@ def test_stats_do_not_count_a_merge_twice_when_its_target_comes_later():
     assert stats.merged.occurrences == 1
     assert stats.in_dictionary.occurrences == 2
     assert tallies["mebel"].count == 3
+
+
+@pytest.mark.parametrize(
+    ("features", "form", "expected"),
+    [
+        ("Gender=Masc|Number=Sing", "on", "on"),
+        ("Animacy=Hum|Gender=Masc|Number=Sing", "go", "on"),
+        ("Gender=Fem|Number=Sing", "ją", "ona"),
+        ("Gender=Neut|Number=Sing", "ono", "ono"),
+        ("Gender=Neut|Number=Sing", "je", "ono"),
+        ("Animacy=Hum|Gender=Masc|Number=Plur", "ich", "oni"),
+        ("Animacy=Inan|Gender=Masc|Number=Plur", "je", "one"),
+        ("Gender=Fem|Number=Plur", "one", "one"),
+        ("Gender=Neut|Number=Plur", "one", "one"),
+    ],
+)
+def test_split_pronoun_uses_gender_and_number(features, form, expected):
+    assert split_pronoun("on", "PRON", MorphAnalysis(Vocab(), features), form) == expected
+
+
+@pytest.mark.parametrize("form", ["jego", "nim", "niego", "jemu", "go", "mu"])
+def test_forms_shared_with_he_are_not_shown_as_it(form):
+    features = MorphAnalysis(Vocab(), "Gender=Neut|Number=Sing")
+    assert split_pronoun("on", "PRON", features, form) == "on"
+
+
+def test_split_pronoun_keeps_on_when_the_tags_are_missing():
+    assert split_pronoun("on", "PRON", MorphAnalysis(Vocab(), ""), "on") == "on"
+
+
+def test_split_pronoun_only_changes_the_pronoun_on():
+    features = MorphAnalysis(Vocab(), "Gender=Fem|Number=Sing")
+    assert split_pronoun("kot", "NOUN", features, "kot") == "kot"
+    assert split_pronoun("on", "NOUN", features, "on") == "on"
+
+
+@pytest.mark.parametrize(
+    ("sentence", "form", "lemma", "meaning"),
+    [
+        ("On idzie do domu.", "on", "on", "he"),
+        ("Ona idzie do domu.", "ona", "ona", "she"),
+        ("Dziecko spało, bo ono było zmęczone.", "ono", "ono", "it"),
+        ("Oni idą do domu.", "oni", "oni", "they"),
+        ("One idą do domu.", "one", "one", "they"),
+        ("Widzę go codziennie.", "go", "on", "he"),
+        ("Widzę ją codziennie.", "ją", "ona", "she"),
+        ("Znam ich dobrze.", "ich", "oni", "they"),
+        ("Książki leżą na stole, weź je.", "je", "one", "they"),
+    ],
+)
+def test_pronouns_get_their_own_rows(nlp, sentence, form, lemma, meaning):
+    entry = _entry(analyze_text(sentence, nlp), lemma)
+    assert form in entry.forms
+    assert entry.translation == meaning
+    assert entry.is_stopword is True
+
+
+def test_pronoun_forms_stay_together_within_their_row(nlp):
+    result = analyze_text("Ona śpi. Widzę ją codziennie. Dałem jej książkę.", nlp)
+    assert set(_entry(result, "ona").forms) == {"ona", "ją", "jej"}
+    assert _entry(result, "on") is None

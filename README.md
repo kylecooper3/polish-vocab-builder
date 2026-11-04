@@ -18,10 +18,10 @@ It also makes the results useful for planning. In that novel (111,198 counted wo
 
 | Most frequent lemmas | Share of the book's words |
 |---|---|
-| Top 100 | 49.2% |
-| Top 500 | 69.5% |
-| Top 1,000 | 77.9% |
-| Top 5,000 | 94.8% |
+| Top 100 | 48.8% |
+| Top 500 | 69.4% |
+| Top 1,000 | 77.8% |
+| Top 5,000 | 94.7% |
 
 ## Features
 
@@ -29,7 +29,7 @@ It also makes the results useful for planning. In that novel (111,198 counted wo
 - **Sortable, searchable table** of lemmas with rank, count, part of speech, English translation, forms seen and an example sentence
 - **Search in either language**, by any Polish form or English meaning
 - **Filters** for part of speech, minimum count, stopwords and whether a word is in the dictionary, which can surface words an author invented
-- **Coverage stat**, such as "the top 500 lemmas cover 69.5% of the book"
+- **Coverage stat**, such as "the top 500 lemmas cover 69.4% of the book"
 - **CSV export** for Anki, with the word, translation and example sentence
 - **Statistics view** showing how the book's words matched the dictionary, with a searchable list of every merge to check by hand
 
@@ -112,12 +112,12 @@ python -m pytest
 ```json
 {
   "total_tokens": 3541,
-  "unique_lemmas": 1280,
+  "unique_lemmas": 1283,
   "lemmas": [
     {
       "lemma": "mecenas",
       "count": 33,
-      "rank": 13,
+      "rank": 14,
       "pos": "NOUN",
       "translation": "patron, sponsor; lawyer, advocate",
       "forms": ["mecenas", "mecenasa", "mecenasem", "mecenasowi"],
@@ -126,7 +126,7 @@ python -m pytest
     }
   ],
   "match_stats": {
-    "in_dictionary": { "rows": 1191, "occurrences": 3410 },
+    "in_dictionary": { "rows": 1194, "occurrences": 3410 },
     "merged": { "rows": 67, "occurrences": 77 },
     "unresolved": { "rows": 11, "occurrences": 12 },
     "no_match": { "rows": 37, "occurrences": 42 }
@@ -169,13 +169,15 @@ python -m pytest
 
 **Check every other lemma against the dictionary too.** spaCy also invents noun and adjective stems, turning `krążkiem` into `krążk` when the word is `krążek`. A lemma missing from the dictionary is suspicious, so once the whole book is counted, the app looks up the form the book actually used in about 1 million forms from Wiktionary. If that gives one word, the rows merge. If it gives several, as with `meble` (`mebel` or `meble`), the app picks the one already in this book, and otherwise leaves the row alone. In *Lalka*, this merged 1,475 false rows, including 246 uses of `rubl` into `rubel`, and halved the blank rows from 2,846 to 1,371. A review of the merges found two wrong ones, `rocznie` ("annually") into `roczeń` ("yearling") and `bylem` into `byl` ("flower stalk"), which are now handled by hand. The cost is about 400 MB of extra peak memory.
 
+**Split pronouns by gender and number.** spaCy files `on` ("he"), `ona` ("she"), `ono` ("it"), `oni` and `one` (both "they") under one lemma. That's a fair grammatical view, but it shows a learner "she" under "he". The app uses spaCy's gender and number tags to give each its own row, with forms like `go` under `on` and `ją` under `ona`. A sample of 30 uses per row from *Lalka* showed this works for `on` and `ona` (all 30 correct in each), but exposed a problem with `ono`: only 7 of 30 were right, because `jego` and `nim` are spelled the same for "he" and "it" and spaCy often guessed "it". So only `ono` and `je` count as "it" now, and those shared forms stay under `on`.
+
 **Make the corrections checkable.** An automatic merge looks just as confident when it's wrong, so the Statistics view lists each one with its sentence and how it was decided. The list is read-only, because undoing merges would add a second way for results to change and nowhere to save it. The figures are recorded at the moment each decision is made rather than worked out again afterwards, so they show what the app actually did. A random sample of 200 merges from *Lalka*, judged by sentence, found none in the wrong word, 4 with a meaning that doesn't fit and 29 debatable groupings, mostly participles under their verb. That review wasn't done by a native speaker.
 
 **Say "not in dictionary", not "invented".** The app can't tell a word an author made up from a rare real word or a spaCy mistake, because all three simply have no entry. So the filter describes what's actually known. Combining it with a minimum count helps, because a word an author coined and keeps using comes up repeatedly.
 
 **Filter in the browser, not on the server.** Analyzing a novel takes about 30 seconds, while filtering takes a fraction of one. The API returns every lemma with its stopword flag, so filters respond straight away without re-analyzing the book.
 
-**Measure coverage honestly.** Coverage is always a share of every counted word in the book. Hiding stopwords lowers the figure, from 69.5% to 26.2% for the top 500 in *Lalka*, rather than making it look better.
+**Measure coverage honestly.** Coverage is always a share of every counted word in the book. Hiding stopwords lowers the figure, from 69.4% to 26.2% for the top 500 in *Lalka*, rather than making it look better.
 
 **Draw 200 table rows at a time.** A novel produces over 11,000 lemmas. Drawing them all made filter changes about 3.5 times slower, so the table draws 200 and offers "Show more", while search, filters and export still use the full list.
 
@@ -190,6 +192,7 @@ python -m pytest
 ## Limitations
 
 - **Lemmatization isn't perfect.** spaCy's model makes mistakes, especially on rare words and older spelling. Characters' names are sometimes tagged as ordinary words, and ordinary words as names or verbs. Corrections only apply when a lemma looks wrong, so a wrong lemma that's a real word isn't caught, and most merges were checked by sampling rather than one by one. Hyphenated compounds are counted as two separate words.
+- **The two words for "they" are often mixed up.** `ich`, `im`, `nich` and `nimi` are spelled the same for `oni` and `one`, so spaCy has to guess from context. In a sample from *Lalka*, 22 of 30 `oni` uses and 17 of 30 `one` uses were right. Both rows show "they", so the meaning is still correct, but their counts are only rough. "It" is undercounted, because neuter uses of `jego` and `nim` are counted under `on`. Possessives also stay with their pronoun, so `jego` ("his") appears under `on` ("he").
 - **Words outside the dictionary can be split.** With no dictionary entry to merge into, one word can appear as several rows if spaCy gives its forms different lemmas, as with `fizjognomia` and `fizjognomii` in *Lalka*. An author's invented word could be split the same way. Invented names are excluded along with all other names, because spaCy can't tell `Trurl` from `Warszawa`.
 - **Translations don't use context.** `mecenas` shows both "patron" and "lawyer", but only one applies in a given book. Each entry shows at most two meanings, so a less common one may be missing, and the example sentence is there to help. About 13% of a novel's distinct words have no translation, though they make up only 2% of its word occurrences.
 - **Hand-written translations are unverified.** They haven't been reviewed by a native speaker.
