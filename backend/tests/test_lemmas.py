@@ -1,4 +1,13 @@
-from app.lemmas import analyze_text, fix_verb_lemma, split_into_chunks
+from collections import Counter
+
+from app.lemmas import (
+    _Tally,
+    analyze_text,
+    correct_unknown_lemmas,
+    find_correct_lemma,
+    fix_verb_lemma,
+    split_into_chunks,
+)
 
 
 def _entry(result, lemma):
@@ -148,3 +157,111 @@ def test_chunks_handle_text_with_no_spaces():
 def test_short_text_is_one_chunk():
     assert split_into_chunks("krótki tekst") == ["krótki tekst"]
     assert split_into_chunks("") == []
+
+
+def _tally(forms, pos="NOUN", example="", good_example=False, stop_count=0):
+    return _Tally(
+        count=sum(forms.values()),
+        stop_count=stop_count,
+        forms=Counter(forms),
+        pos=Counter({pos: sum(forms.values())}),
+        example=example,
+        example_is_good=good_example,
+    )
+
+
+def test_find_correct_lemma_uses_the_only_match():
+    assert find_correct_lemma(_tally({"krążkiem": 1}), {"krążkiem": ["krążek"]}, set()) == "krążek"
+
+
+def test_find_correct_lemma_breaks_a_tie_with_a_word_already_in_the_book():
+    table = {"meble": ["mebel", "meble"]}
+    assert find_correct_lemma(_tally({"meble": 1}), table, {"mebel"}) == "mebel"
+
+
+def test_find_correct_lemma_does_not_guess_when_no_tie_break_applies():
+    table = {"meble": ["mebel", "meble"]}
+    assert find_correct_lemma(_tally({"meble": 1}), table, set()) is None
+    assert find_correct_lemma(_tally({"meble": 1}), table, {"mebel", "meble"}) is None
+
+
+def test_find_correct_lemma_leaves_unknown_words_alone():
+    assert find_correct_lemma(_tally({"sepulki": 2}), {}, set()) is None
+
+
+def test_find_correct_lemma_needs_every_form_to_agree():
+    table = {"aa": ["pies"], "bb": ["kot"]}
+    assert find_correct_lemma(_tally({"aa": 1, "bb": 1}), table, set()) is None
+    assert find_correct_lemma(_tally({"aa": 1, "bb": 1}), {"aa": ["pies"]}, set()) is None
+
+
+def test_correct_unknown_lemmas_merges_into_an_existing_row():
+    tallies = {
+        "mebel": _tally({"meble": 1, "mebli": 1}, example="Stare meble.", good_example=True),
+        "mebl": _tally({"meble": 1}, example="Inne meble tutaj stoją razem.", good_example=True, stop_count=1),
+    }
+    correct_unknown_lemmas(tallies, {"meble": ["mebel", "meble"]}, {"mebel": {}, "meble": {}})
+    assert set(tallies) == {"mebel"}
+    assert tallies["mebel"].count == 3
+    assert tallies["mebel"].stop_count == 1
+    assert tallies["mebel"].forms == Counter({"meble": 2, "mebli": 1})
+    assert tallies["mebel"].pos["NOUN"] == 3
+    assert tallies["mebel"].example == "Stare meble."
+
+
+def test_correct_unknown_lemmas_creates_a_row_when_needed():
+    tallies = {"krążk": _tally({"krążkiem": 2}, example="Bawił się krążkiem.")}
+    correct_unknown_lemmas(tallies, {"krążkiem": ["krążek"]}, {"krążek": {}})
+    assert set(tallies) == {"krążek"}
+    assert tallies["krążek"].count == 2
+    assert tallies["krążek"].example == "Bawił się krążkiem."
+
+
+def test_correct_unknown_lemmas_upgrades_to_a_better_example():
+    tallies = {
+        "mebel": _tally({"mebli": 1}, example="Mebli!"),
+        "mebl": _tally({"meble": 1}, example="Inne meble tutaj stoją razem.", good_example=True),
+    }
+    correct_unknown_lemmas(tallies, {"meble": ["mebel"]}, {"mebel": {}})
+    assert tallies["mebel"].example == "Inne meble tutaj stoją razem."
+    assert tallies["mebel"].example_is_good is True
+
+
+def test_correct_unknown_lemmas_ignores_words_that_have_a_translation():
+    tallies = {"stać": _tally({"stały": 1})}
+    correct_unknown_lemmas(tallies, {"stały": ["stały"]}, {"stać": {}, "stały": {}})
+    assert set(tallies) == {"stać"}
+
+
+def test_correct_unknown_lemmas_keeps_words_it_cannot_place():
+    tallies = {"sepulka": _tally({"sepulki": 2})}
+    correct_unknown_lemmas(tallies, {}, {})
+    assert tallies["sepulka"].count == 2
+
+
+def test_correct_unknown_lemmas_applies_merges_to_the_target():
+    tallies = {"wybor": _tally({"wyborach": 1})}
+    correct_unknown_lemmas(tallies, {"wyborach": ["wybory"]}, {"wybory": {}, "wybór": {}})
+    assert set(tallies) == {"wybór"}
+
+
+def test_a_wrong_noun_lemma_is_corrected_in_a_real_sentence(nlp):
+    result = analyze_text("Bawił się małym krążkiem.", nlp)
+    assert _entry(result, "krążk") is None
+    entry = _entry(result, "krążek")
+    assert entry.count == 1
+    assert "disc" in entry.translation
+
+
+def test_a_made_up_word_stays_in_the_list_with_no_translation(nlp):
+    result = analyze_text("Wtedy kupił nową zbruglawą sepulkę.", nlp)
+    assert any(entry.translation == "" and "sepulkę" in entry.forms for entry in result.lemmas)
+
+
+def test_find_correct_lemma_skips_forms_of_unrelated_words():
+    assert find_correct_lemma(_tally({"bylem": 2}), {"bylem": ["byl"]}, set()) is None
+
+
+def test_rocznie_keeps_its_own_meaning(nlp):
+    entry = _entry(analyze_text("Zarabiał tysiąc rubli rocznie w tej firmie.", nlp), "rocznie")
+    assert "annually" in entry.translation

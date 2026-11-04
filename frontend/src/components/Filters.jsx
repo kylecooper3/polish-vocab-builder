@@ -35,6 +35,18 @@ function Filters({ search, onSearchChange, filters, onFilterChange, posCodes }) 
         </select>
       </label>
 
+      <label className="field">
+        Dictionary
+        <select
+          value={filters.dictionary}
+          onChange={(event) => onFilterChange('dictionary', event.target.value)}
+        >
+          <option value="ALL">All words</option>
+          <option value="KNOWN">In dictionary</option>
+          <option value="UNKNOWN">Not in dictionary</option>
+        </select>
+      </label>
+
       <label className="field field-narrow">
         Minimum count
         <input

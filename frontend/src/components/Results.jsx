@@ -13,7 +13,12 @@ import ResultsTable from './ResultsTable.jsx'
 
 function Results({ result, filename }) {
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({ pos: 'ALL', minCount: 1, hideStopwords: false })
+  const [filters, setFilters] = useState({
+    pos: 'ALL',
+    minCount: 1,
+    hideStopwords: false,
+    dictionary: 'ALL',
+  })
   const [sortKey, setSortKey] = useState('rank')
   const [sortDirection, setSortDirection] = useState('asc')
 

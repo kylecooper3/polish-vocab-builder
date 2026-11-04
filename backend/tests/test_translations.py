@@ -5,9 +5,16 @@ from app.translations import (
     apply_overrides,
     load_translations,
     load_verb_forms,
+    load_word_forms,
     translate,
 )
-from scripts.build_translations import KEPT_POS, build_table, build_verb_forms, clean_meaning
+from scripts.build_translations import (
+    KEPT_POS,
+    build_table,
+    build_verb_forms,
+    build_word_forms,
+    clean_meaning,
+)
 
 
 def _sense(gloss, raw=None, tags=None, **extra):
@@ -287,3 +294,74 @@ def test_real_data_has_the_words_that_needed_special_handling():
     assert translate("zamek", "NOUN", table) == "lock; castle"
     # No raw wiki markup should reach the app, for any of the 145,000 words.
     assert "{{" not in json.dumps(table, ensure_ascii=False)
+
+
+def _forms_record(word, pos, *forms):
+    return {
+        "word": word,
+        "pos": pos,
+        "forms": [{"form": form, "tags": tags} for form, tags in forms],
+    }
+
+
+def test_word_forms_map_inflections_to_their_dictionary_word():
+    records = [_forms_record("krążek", "noun", ("krążkiem", ["instrumental", "singular"]))]
+    assert build_word_forms(records, {"krążek"})["krążkiem"] == ["krążek"]
+
+
+def test_word_forms_include_the_dictionary_word_itself():
+    records = [_forms_record("oświadczyny", "noun")]
+    assert build_word_forms(records, {"oświadczyny"}) == {"oświadczyny": ["oświadczyny"]}
+
+
+def test_word_forms_keep_every_word_a_form_could_belong_to():
+    records = [
+        _forms_record("mebel", "noun", ("meble", ["nominative", "plural"])),
+        _forms_record("meble", "noun"),
+    ]
+    assert build_word_forms(records, {"mebel", "meble"})["meble"] == ["mebel", "meble"]
+
+
+def test_word_forms_skip_related_words_that_are_not_inflections():
+    records = [
+        _forms_record(
+            "pies",
+            "noun",
+            ("piesek", ["diminutive"]),
+            ("psi", ["adjective"]),
+            ("psisko", ["augmentative"]),
+            ("psem", ["instrumental", "singular"]),
+        )
+    ]
+    assert set(build_word_forms(records, {"pies"})) == {"pies", "psem"}
+
+
+def test_word_forms_keep_comparatives_with_their_adjective():
+    records = [_forms_record("wolny", "adj", ("wolniejszy", ["comparative"]))]
+    assert build_word_forms(records, {"wolny"})["wolniejszy"] == ["wolny"]
+
+
+def test_word_forms_skip_table_notes_and_phrases():
+    records = [
+        _forms_record(
+            "wolny",
+            "adj",
+            ("pl-adecl", ["inflection-template", "singular"]),
+            ("bardziej wolny", ["comparative"]),
+        )
+    ]
+    assert set(build_word_forms(records, {"wolny"})) == {"wolny"}
+
+
+def test_word_forms_use_verb_conjugations():
+    records = [_forms_record("donieść", "verb", ("doniósł", ["past", "masculine"]), ("donosić", ["imperfective"]))]
+    assert set(build_word_forms(records, {"donieść"})) == {"donieść", "doniósł"}
+
+
+def test_word_forms_skip_words_without_a_translation():
+    records = [_forms_record("xyz", "noun", ("xyza", ["genitive", "singular"]))]
+    assert build_word_forms(records, {"pies"}) == {}
+
+
+def test_word_form_table_finds_a_real_noun():
+    assert load_word_forms()["krążkiem"] == ["krążek"]

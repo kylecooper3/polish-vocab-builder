@@ -13,6 +13,10 @@
 
 `verb_forms.json.gz` maps Polish verb forms to their dictionary words, such as `poszedłem` to `pójść`. It's built by the same script from the conjugation tables in the same source, and is shared under the same license. The app uses it to correct verb lemmas that spaCy gets wrong.
 
+## Word forms
+
+`word_forms.json.gz` maps forms of all kinds to every dictionary word they could belong to, such as `krążkiem` to `krążek`, or `meble` to both `mebel` and `meble`. It's built by the same script from the same source, and is shared under the same license. The app uses it to correct lemmas that aren't in the dictionary. Related words listed in an entry, such as the diminutive `piesek` under `pies`, are left out, because they're different words.
+
 ## Hand-written fixes
 
 `translation_overrides.json` holds fixes for common words where the automatic result was poor or missing. These entries are written by hand rather than taken from Wiktionary, and they replace the automatic translation when the app loads. To change one, edit the file and restart the backend. No rebuild is needed.

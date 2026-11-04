@@ -8,7 +8,7 @@ import spacy
 from pydantic import BaseModel
 from spacy.language import Language
 
-from app.translations import load_translations, load_verb_forms, translate
+from app.translations import load_translations, load_verb_forms, load_word_forms, translate
 
 MODEL_NAME = "pl_core_news_lg"
 
@@ -31,6 +31,10 @@ VERB_POS = {"VERB", "AUX"}
 # Words spaCy can wrongly tag as verbs that also match a form in the verb tables, such
 # as "zdrów" ("healthy"), which would otherwise become "zdrowić" ("to heal").
 NOT_VERB_FORMS = {"zdrów", "dziw"}
+
+# Words that happen to match a form of an unrelated word, such as "bylem", which looks
+# like a form of "byl" ("flower stalk") but comes from "byle" ("if only").
+NOT_WORD_FORMS = {"bylem"}
 
 # Sentences of this length make the best flashcard examples.
 MIN_EXAMPLE_WORDS = 5
@@ -116,6 +120,49 @@ def fix_verb_lemma(form: str, lemma: str, pos: str, verb_forms: dict, translatio
     return verb_forms.get(form, lemma)
 
 
+def find_correct_lemma(tally: _Tally, word_forms: dict, rows_in_book: set[str]) -> str | None:
+    """Work out which dictionary word a row belongs to from the forms the book used.
+
+    spaCy can invent a stem ("krążkiem" gives "krążk"), but the form itself is reliable.
+    Returns None rather than guess, because a blank row is better than a wrong merge.
+    """
+    targets = set()
+    for form in tally.forms:
+        candidates = [] if form in NOT_WORD_FORMS else word_forms.get(form, [])
+        if len(candidates) > 1:
+            # "meble" could be "mebel" or "meble", so prefer one this book already uses.
+            candidates = [word for word in candidates if word in rows_in_book]
+        if len(candidates) != 1:
+            return None
+        targets.add(candidates[0])
+    return targets.pop() if len(targets) == 1 else None
+
+
+def correct_unknown_lemmas(tallies: dict[str, _Tally], word_forms: dict, translations: dict) -> None:
+    """Merge rows whose lemma isn't in the dictionary into the word they belong to.
+
+    A row with no match stays as it is. That may be a word the dictionary doesn't have,
+    such as one an author invented, and it still deserves a place in the list.
+    """
+    # Decided up front, so the answer doesn't depend on which rows are fixed first.
+    rows_in_book = {lemma for lemma in tallies if lemma in translations}
+    for lemma in [lemma for lemma in tallies if lemma not in translations]:
+        target = find_correct_lemma(tallies[lemma], word_forms, rows_in_book)
+        if target:
+            target = LEMMA_MERGES.get(target, target)
+            _merge_tally(tallies.setdefault(target, _Tally()), tallies.pop(lemma))
+
+
+def _merge_tally(target: _Tally, source: _Tally) -> None:
+    target.count += source.count
+    target.stop_count += source.stop_count
+    target.forms.update(source.forms)
+    target.pos.update(source.pos)
+    if not target.example or (source.example_is_good and not target.example_is_good):
+        target.example = source.example
+        target.example_is_good = source.example_is_good
+
+
 def analyze_text(text: str, nlp) -> AnalysisResult:
     tallies: dict[str, _Tally] = {}
     total_tokens = 0
@@ -156,6 +203,8 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
                 if not tally.example or (good_length and not tally.example_is_good):
                     tally.example = sentence_text
                     tally.example_is_good = good_length
+
+    correct_unknown_lemmas(tallies, load_word_forms(), translations)
 
     # Sorting by lemma as well makes ties come out in the same order every run.
     ordered = sorted(tallies.items(), key=lambda item: (-item[1].count, item[0]))

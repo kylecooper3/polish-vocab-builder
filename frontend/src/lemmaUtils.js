@@ -28,13 +28,22 @@ export function posOptions(lemmas) {
 }
 
 // Decides which words you want to study. Keeps the API's order, most frequent first.
-export function applyFilters(lemmas, { pos, minCount, hideStopwords }) {
+export function applyFilters(lemmas, { pos, minCount, hideStopwords, dictionary }) {
   return lemmas.filter(
     (entry) =>
       (pos === 'ALL' || entry.pos === pos) &&
       entry.count >= minCount &&
-      !(hideStopwords && entry.is_stopword),
+      !(hideStopwords && entry.is_stopword) &&
+      matchesDictionaryFilter(entry, dictionary),
   )
+}
+
+// A blank translation means the word isn't in the dictionary. That could be a word an
+// author invented, a rare real word or a spaCy mistake, and the app can't tell which.
+function matchesDictionaryFilter(entry, dictionary) {
+  if (dictionary === 'KNOWN') return entry.translation !== ''
+  if (dictionary === 'UNKNOWN') return entry.translation === ''
+  return true
 }
 
 // Finds a word by its dictionary form, any form seen in the book, or its English

@@ -12,6 +12,7 @@ DATA_FILE = DATA_FOLDER / "translations.json"
 OVERRIDES_FILE = DATA_FOLDER / "translation_overrides.json"
 
 VERB_FORMS_FILE = DATA_FOLDER / "verb_forms.json.gz"
+WORD_FORMS_FILE = DATA_FOLDER / "word_forms.json.gz"
 
 # spaCy and Wiktionary name parts of speech differently, and don't always agree. Where
 # they disagree, such as "więc" (SCONJ in spaCy, a particle in Wiktionary), the fallback
@@ -44,6 +45,12 @@ def load_translations() -> dict[str, dict[str, str]]:
 def load_verb_forms() -> dict[str, str]:
     """Verb forms and their dictionary words, such as {"poszedłem": "pójść"}."""
     return json.loads(gzip.decompress(VERB_FORMS_FILE.read_bytes()))
+
+
+@lru_cache(maxsize=1)
+def load_word_forms() -> dict[str, list[str]]:
+    """Forms of all kinds and the words they could belong to: {"meble": ["mebel", "meble"]}."""
+    return json.loads(gzip.decompress(WORD_FORMS_FILE.read_bytes()))
 
 
 def apply_overrides(table: dict, overrides: dict) -> dict:

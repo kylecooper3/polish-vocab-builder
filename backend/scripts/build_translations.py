@@ -17,10 +17,18 @@ from pathlib import Path
 
 OUTPUT_FILE = Path(__file__).parent.parent / "data" / "translations.json"
 VERB_FORMS_FILE = OUTPUT_FILE.parent / "verb_forms.json.gz"
+WORD_FORMS_FILE = OUTPUT_FILE.parent / "word_forms.json.gz"
 
 # Entries in a verb's table that aren't forms of that verb.
 ASPECT_TAGS = {"imperfective", "perfective"}
 NON_FORM_TAGS = {"table-tags", "inflection-template", "class", "canonical", "romanization"}
+
+# A noun or adjective's entries also list related words, such as "piesek" and "psi" under
+# "pies". Those are different words, so only entries with these tags count as its forms.
+INFLECTION_TAGS = {
+    "singular", "plural", "nominative", "genitive", "dative", "accusative",
+    "instrumental", "locative", "vocative", "comparative", "superlative",
+}
 
 # Names, letters, prefixes and so on aren't vocabulary a learner looks up here.
 KEPT_POS = {"noun", "verb", "adj", "adv", "prep", "conj", "pron", "det", "num", "particle", "intj"}
@@ -203,16 +211,52 @@ def build_verb_forms(records) -> dict[str, str]:
     return {form: next(iter(words)) for form, words in candidates.items() if len(words) == 1}
 
 
+def is_inflected_form(entry: dict, pos: str) -> bool:
+    """Is this entry in a word's table really a form of that word?"""
+    form = entry.get("form") or ""
+    tags = set(entry.get("tags", []))
+    if not form or " " in form or tags & NON_FORM_TAGS:
+        return False
+    # Verb tables mark a verb's partner with an aspect ("pójść" lists "iść").
+    return not tags <= ASPECT_TAGS if pos == "verb" else bool(tags & INFLECTION_TAGS)
+
+
+def build_word_forms(records, translated_words: set[str]) -> dict[str, list[str]]:
+    """Map each form to every translated word it could belong to.
+
+    Unlike the verb table, this keeps forms that could belong to several words, as in
+    {"meble": ["mebel", "meble"]}. The app can settle those using the rest of the book.
+    """
+    candidates = defaultdict(set)
+    for record in records:
+        word, pos = record.get("word", "").lower(), record.get("pos")
+        if word not in translated_words or pos not in KEPT_POS:
+            continue
+        candidates[word].add(word)
+        for entry in record.get("forms", []):
+            if is_inflected_form(entry, pos):
+                candidates[entry["form"].lower()].add(word)
+    return {form: sorted(words) for form, words in candidates.items()}
+
+
+def write_compressed_json(path: Path, data: dict) -> None:
+    # mtime=0 means a rebuild with the same data gives an identical file for Git.
+    path.write_bytes(
+        gzip.compress(json.dumps(data, ensure_ascii=False, sort_keys=True).encode(), mtime=0)
+    )
+
+
 def main(source: str) -> None:
     with open(source, encoding="utf-8") as handle:
         table = build_table(json.loads(line) for line in handle)
     with open(source, encoding="utf-8") as handle:
         verb_forms = build_verb_forms(json.loads(line) for line in handle)
-    # mtime=0 means a rebuild with the same data gives an identical file for Git.
-    VERB_FORMS_FILE.write_bytes(
-        gzip.compress(json.dumps(verb_forms, ensure_ascii=False, sort_keys=True).encode(), mtime=0)
-    )
+    write_compressed_json(VERB_FORMS_FILE, verb_forms)
     print(f"{len(verb_forms):,} verb forms, {VERB_FORMS_FILE.stat().st_size / 1e6:.1f} MB")
+    with open(source, encoding="utf-8") as handle:
+        word_forms = build_word_forms((json.loads(line) for line in handle), set(table))
+    write_compressed_json(WORD_FORMS_FILE, word_forms)
+    print(f"{len(word_forms):,} word forms, {WORD_FORMS_FILE.stat().st_size / 1e6:.1f} MB")
     OUTPUT_FILE.parent.mkdir(exist_ok=True)
     # Sorted, with one word per line, so a rebuild gives a readable Git diff.
     lines = [
