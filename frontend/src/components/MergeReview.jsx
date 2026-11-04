@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { MERGE_METHOD_LABELS, PAGE_SIZE, filterMerges } from '../lemmaUtils.js'
+import ExampleSentence from './ExampleSentence.jsx'
 
 // A read-only list of every merge, so a person can judge them against their sentences.
 function MergeReview({ merges, lemmas }) {
@@ -75,7 +76,9 @@ function MergeReview({ merges, lemmas }) {
                       {MERGE_METHOD_LABELS[merge.method]}
                       {merge.new_row && <span className="tag merge-tag">new word</span>}
                     </td>
-                    <td lang="pl" className="example">{merge.example}</td>
+                    <td lang="pl" className="example">
+                      <ExampleSentence sentence={merge.example} forms={merge.forms} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

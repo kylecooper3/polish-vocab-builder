@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PAGE_SIZE, posLabel } from '../lemmaUtils.js'
+import ExampleSentence from './ExampleSentence.jsx'
 
 // Drawing all 12,700 rows of a novel made filter changes about 3.5 times slower (669 ms
 // against 194 ms in development mode), so we only draw PAGE_SIZE at a time. Search,
@@ -62,7 +63,9 @@ function ResultsTable({ rows, sortKey, sortDirection, onSort }) {
                 {/* "||" uses the right side when the left is empty: not every word has a translation. */}
                 <td className="translation">{entry.translation || '—'}</td>
                 <td lang="pl" className="forms">{entry.forms.join(', ')}</td>
-                <td lang="pl" className="example">{entry.example}</td>
+                <td lang="pl" className="example">
+                  <ExampleSentence sentence={entry.example} forms={entry.forms} />
+                </td>
               </tr>
             ))}
           </tbody>

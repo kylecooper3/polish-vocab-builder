@@ -46,6 +46,21 @@ function matchesDictionaryFilter(entry, dictionary) {
   return true
 }
 
+// Splits a sentence into pieces, marking the ones that are forms of the word. \b only
+// understands English letters, so it would treat "ł" as a gap between words. These
+// checks use \p{L}, meaning a letter in any language, so "pies" doesn't match in "piesek".
+export function splitAroundForms(sentence, forms) {
+  const words = forms.map((form) => form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  if (!words) return [{ text: sentence, isMatch: false }]
+
+  const pattern = new RegExp(`(?<!\\p{L})(${words})(?!\\p{L})`, 'giu')
+  // split() with a (group) keeps what matched, so matches land at the odd positions.
+  return sentence
+    .split(pattern)
+    .map((text, index) => ({ text, isMatch: index % 2 === 1 }))
+    .filter((piece) => piece.text)
+}
+
 // How many rows to draw at a time in the long tables.
 export const PAGE_SIZE = 200
 
