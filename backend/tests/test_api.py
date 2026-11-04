@@ -94,3 +94,21 @@ def test_garbled_text_returns_422_with_advice(client, make_epub):
 def test_oversized_file_returns_413(client, monkeypatch):
     monkeypatch.setattr(main, "MAX_UPLOAD_BYTES", 10)
     assert _upload(client, "big.pdf", b"x" * 11).status_code == 413
+
+
+def test_response_includes_match_stats_and_merges(client, make_pdf):
+    body = _upload(client, "book.pdf", make_pdf(["<p>Bawił się małym krążkiem.</p>"])).json()
+    assert set(body["match_stats"]) == {"in_dictionary", "merged", "unresolved", "no_match"}
+    assert set(body["match_stats"]["merged"]) == {"rows", "occurrences"}
+    merge = next(item for item in body["merges"] if item["from_lemma"] == "krążk")
+    assert set(merge) == {
+        "from_lemma", "to_lemma", "count", "pos", "forms", "example", "method", "new_row",
+    }
+
+
+def test_exclude_stopwords_keeps_stats_and_merges_for_the_whole_book(client, make_pdf):
+    data = make_pdf(["<p>Bawił się małym krążkiem. Mam psa.</p>"])
+    full = _upload(client, "book.pdf", data).json()
+    filtered = _upload(client, "book.pdf", data, exclude_stopwords=True).json()
+    assert filtered["match_stats"] == full["match_stats"]
+    assert filtered["merges"] == full["merges"]

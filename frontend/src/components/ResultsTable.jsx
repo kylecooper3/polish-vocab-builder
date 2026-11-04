@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { posLabel } from '../lemmaUtils.js'
+import { PAGE_SIZE, posLabel } from '../lemmaUtils.js'
 
 // Drawing all 12,700 rows of a novel made filter changes about 3.5 times slower (669 ms
-// against 194 ms in development mode), so we only draw this many at a time. Search,
+// against 194 ms in development mode), so we only draw PAGE_SIZE at a time. Search,
 // filters and export still use the full list.
-const PAGE_SIZE = 200
 
 // Plain data describing the sortable columns, so we don't repeat the same JSX four times.
 const SORTABLE_COLUMNS = [

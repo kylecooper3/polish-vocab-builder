@@ -31,6 +31,7 @@ It also makes the results useful for planning. In that novel (111,198 counted wo
 - **Filters** for part of speech, minimum count, stopwords and whether a word is in the dictionary, which can surface words an author invented
 - **Coverage stat**, such as "the top 500 lemmas cover 69.5% of the book"
 - **CSV export** for Anki, with the word, translation and example sentence
+- **Statistics view** showing how the book's words matched the dictionary, with a searchable list of every merge to check by hand
 
 ## Architecture
 
@@ -123,9 +124,29 @@ python -m pytest
       "example": "Gdy został mecenasem, czoło, skutkiem natężonej pracy umysłowej, urosło mu aż do ciemienia...",
       "is_stopword": false
     }
+  ],
+  "match_stats": {
+    "in_dictionary": { "rows": 1191, "occurrences": 3410 },
+    "merged": { "rows": 67, "occurrences": 77 },
+    "unresolved": { "rows": 11, "occurrences": 12 },
+    "no_match": { "rows": 37, "occurrences": 42 }
+  },
+  "merges": [
+    {
+      "from_lemma": "krążk",
+      "to_lemma": "krążek",
+      "count": 1,
+      "pos": "NOUN",
+      "forms": ["krążkiem"],
+      "example": "Czerwona wiśnia stała się dla niej wiśnią gładką, okrągłą i miękką...",
+      "method": "only_match",
+      "new_row": true
+    }
   ]
 }
 ```
+
+`match_stats` puts every row spaCy produced into one group, before any merging. `merges` lists each row that was merged, biggest first. `method` is `only_match` when a form pointed to one word, or `tie_break` when the word already in the book was chosen. `new_row` means the book had no correct row for that word. Both describe the whole book, even with `exclude_stopwords=true`.
 
 | Status | Meaning |
 |---|---|
@@ -147,6 +168,8 @@ python -m pytest
 **Correct wrong verb lemmas with a dictionary.** spaCy sometimes invents a stem, turning `poszedłem` ("I went") into `poszedć`, or returns the word unchanged, as with `mógłbym` ("I could"). When a verb's lemma looks wrong in one of those ways, the app looks up the form in about 580,000 verb forms from Wiktionary, so these become `pójść` and `móc`. This changed 8% of the verbs in *Lalka* and removed about 1,000 false entries, for about 100 MB of extra memory. A form that could belong to two verbs is left alone rather than guessed.
 
 **Check every other lemma against the dictionary too.** spaCy also invents noun and adjective stems, turning `krążkiem` into `krążk` when the word is `krążek`. A lemma missing from the dictionary is suspicious, so once the whole book is counted, the app looks up the form the book actually used in about 1 million forms from Wiktionary. If that gives one word, the rows merge. If it gives several, as with `meble` (`mebel` or `meble`), the app picks the one already in this book, and otherwise leaves the row alone. In *Lalka*, this merged 1,475 false rows, including 246 uses of `rubl` into `rubel`, and halved the blank rows from 2,846 to 1,371. A review of the merges found two wrong ones, `rocznie` ("annually") into `roczeń` ("yearling") and `bylem` into `byl` ("flower stalk"), which are now handled by hand. The cost is about 400 MB of extra peak memory.
+
+**Make the corrections checkable.** An automatic merge looks just as confident when it's wrong, so the Statistics view lists each one with its sentence and how it was decided. The list is read-only, because undoing merges would add a second way for results to change and nowhere to save it. The figures are recorded at the moment each decision is made rather than worked out again afterwards, so they show what the app actually did. A random sample of 200 merges from *Lalka*, judged by sentence, found none in the wrong word, 4 with a meaning that doesn't fit and 29 debatable groupings, mostly participles under their verb. That review wasn't done by a native speaker.
 
 **Say "not in dictionary", not "invented".** The app can't tell a word an author made up from a rare real word or a spaCy mistake, because all three simply have no entry. So the filter describes what's actually known. Combining it with a minimum count helps, because a word an author coined and keeps using comes up repeatedly.
 

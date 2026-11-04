@@ -10,8 +10,10 @@ import {
 import Coverage from './Coverage.jsx'
 import Filters from './Filters.jsx'
 import ResultsTable from './ResultsTable.jsx'
+import Statistics from './Statistics.jsx'
 
 function Results({ result, filename }) {
+  const [view, setView] = useState('words')
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({
     pos: 'ALL',
@@ -57,37 +59,52 @@ function Results({ result, filename }) {
         {uniqueLemmas.toLocaleString()} unique lemmas
       </p>
 
-      {/* Passing values down as attributes is how a parent gives a child its props. */}
-      <Coverage lemmas={filtered} totalTokens={totalTokens} />
-
-      <Filters
-        search={search}
-        onSearchChange={setSearch}
-        filters={filters}
-        onFilterChange={updateFilter}
-        posCodes={posOptions(lemmas)}
-      />
-
-      <div className="results-bar">
-        <p className="result-count" aria-live="polite">
-          {rows.length.toLocaleString()} of {lemmas.length.toLocaleString()} lemmas match
-        </p>
-        <button
-          type="button"
-          className="button"
-          onClick={handleExport}
-          disabled={rows.length === 0}
-        >
-          Export {rows.length.toLocaleString()} to CSV for Anki
+      <div className="view-switch" role="group" aria-label="Choose a view">
+        <button type="button" aria-pressed={view === 'words'} onClick={() => setView('words')}>
+          Word list
+        </button>
+        <button type="button" aria-pressed={view === 'stats'} onClick={() => setView('stats')}>
+          Statistics
         </button>
       </div>
 
-      <ResultsTable
-        rows={rows}
-        sortKey={sortKey}
-        sortDirection={sortDirection}
-        onSort={handleSort}
-      />
+      {/* Hidden rather than removed, so the word list keeps its place, "Show more" and
+          coverage setting when you come back to it. */}
+      <div hidden={view !== 'words'}>
+        {/* Passing values down as attributes is how a parent gives a child its props. */}
+        <Coverage lemmas={filtered} totalTokens={totalTokens} />
+
+        <Filters
+          search={search}
+          onSearchChange={setSearch}
+          filters={filters}
+          onFilterChange={updateFilter}
+          posCodes={posOptions(lemmas)}
+        />
+
+        <div className="results-bar">
+          <p className="result-count" aria-live="polite">
+            {rows.length.toLocaleString()} of {lemmas.length.toLocaleString()} lemmas match
+          </p>
+          <button
+            type="button"
+            className="button"
+            onClick={handleExport}
+            disabled={rows.length === 0}
+          >
+            Export {rows.length.toLocaleString()} to CSV for Anki
+          </button>
+        </div>
+
+        <ResultsTable
+          rows={rows}
+          sortKey={sortKey}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+        />
+      </div>
+
+      {view === 'stats' && <Statistics result={result} />}
     </>
   )
 }

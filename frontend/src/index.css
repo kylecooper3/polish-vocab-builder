@@ -363,6 +363,88 @@ th button:hover {
   min-width: 280px;
 }
 
+/* Switching between the word list and statistics */
+.view-switch {
+  display: inline-flex;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.view-switch button {
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.view-switch button:hover {
+  color: var(--accent);
+}
+
+.view-switch button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+/* Statistics */
+h2 {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+}
+
+.section-note {
+  max-width: 75ch;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.group-cell {
+  min-width: 260px;
+}
+
+.group-description {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+tfoot th,
+tfoot td {
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+  font-weight: 600;
+}
+
+tfoot th {
+  color: var(--text);
+  font-size: inherit;
+}
+
+.merge-review {
+  margin-top: 32px;
+}
+
+.merge-count {
+  margin-bottom: 8px;
+}
+
+.merge-how {
+  white-space: nowrap;
+}
+
+.merge-tag {
+  display: block;
+  width: fit-content;
+  margin: 4px 0 0;
+}
+
 .empty {
   padding: 32px;
   border: 1px dashed var(--border);

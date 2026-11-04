@@ -42,3 +42,14 @@ def test_sample_book_excludes_publisher_material(nlp):
     # Its first use is "jegomościa1", which a footnote marker used to hide.
     assert "jegomość" in lemmas
     assert not any(char.isdigit() for char in lemmas["jegomość"].example)
+
+
+def test_match_stats_add_up_to_the_whole_book(nlp):
+    text = clean_pages(extract_pages(SAMPLE.read_bytes(), SAMPLE.name))
+    result = analyze_text(text, nlp)
+    stats = result.match_stats
+    groups = [stats.in_dictionary, stats.merged, stats.unresolved, stats.no_match]
+
+    assert sum(group.occurrences for group in groups) == result.total_tokens
+    assert stats.merged.rows == len(result.merges)
+    assert stats.merged.occurrences == sum(merge.count for merge in result.merges)

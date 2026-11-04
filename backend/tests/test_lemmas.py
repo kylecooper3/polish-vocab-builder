@@ -265,3 +265,99 @@ def test_find_correct_lemma_skips_forms_of_unrelated_words():
 def test_rocznie_keeps_its_own_meaning(nlp):
     entry = _entry(analyze_text("Zarabiał tysiąc rubli rocznie w tej firmie.", nlp), "rocznie")
     assert "annually" in entry.translation
+
+
+def _report_tallies():
+    return {
+        "mebel": _tally({"mebli": 2}),  # in the dictionary
+        "mebl": _tally({"meble": 1}, example="Stare meble."),  # tied, then settled by "mebel"
+        "krążk": _tally({"krążkiem": 3}),  # one match, and no "krążek" row yet
+        "sepulka": _tally({"sepulki": 4}),  # not in the table at all
+        "palc": _tally({"palcach": 5}),  # tied, and neither candidate is in the book
+        "bylem": _tally({"bylem": 6}),  # an exception, so it counts as no match
+    }
+
+
+FORMS_FOR_REPORT = {
+    "meble": ["mebel", "meble"],
+    "krążkiem": ["krążek"],
+    "palcach": ["palec", "palce"],
+    "bylem": ["byl"],
+}
+DICTIONARY_FOR_REPORT = {"mebel": {}, "meble": {}, "krążek": {}, "palec": {}, "palce": {}, "byl": {}}
+
+
+def test_correction_report_puts_every_row_in_one_group():
+    _, stats = correct_unknown_lemmas(_report_tallies(), FORMS_FOR_REPORT, DICTIONARY_FOR_REPORT)
+    assert (stats.in_dictionary.rows, stats.in_dictionary.occurrences) == (1, 2)
+    assert (stats.merged.rows, stats.merged.occurrences) == (2, 4)
+    assert (stats.unresolved.rows, stats.unresolved.occurrences) == (1, 5)
+    assert (stats.no_match.rows, stats.no_match.occurrences) == (2, 10)
+
+
+def test_correction_report_describes_each_merge():
+    merges, _ = correct_unknown_lemmas(_report_tallies(), FORMS_FOR_REPORT, DICTIONARY_FOR_REPORT)
+    by_source = {merge.from_lemma: merge for merge in merges}
+    assert set(by_source) == {"mebl", "krążk"}
+
+    tied = by_source["mebl"]
+    assert (tied.to_lemma, tied.count, tied.pos) == ("mebel", 1, "NOUN")
+    assert tied.forms == ["meble"]
+    assert tied.example == "Stare meble."
+    assert tied.method == "tie_break"
+    assert tied.new_row is False
+
+    only = by_source["krążk"]
+    assert (only.to_lemma, only.method, only.new_row) == ("krążek", "only_match", True)
+
+
+def test_correction_report_lists_the_biggest_merges_first():
+    merges, _ = correct_unknown_lemmas(_report_tallies(), FORMS_FOR_REPORT, DICTIONARY_FOR_REPORT)
+    assert [merge.from_lemma for merge in merges] == ["krążk", "mebl"]
+
+
+def test_a_merge_keeps_the_row_it_came_from_out_of_the_final_counts():
+    tallies = _report_tallies()
+    correct_unknown_lemmas(tallies, FORMS_FOR_REPORT, DICTIONARY_FOR_REPORT)
+    assert {"mebl", "krążk"}.isdisjoint(tallies)
+    assert tallies["mebel"].count == 3
+
+
+def test_match_stats_cover_the_whole_book(nlp):
+    result = analyze_text("Bawił się małym krążkiem. Mam psa. Kupił nową zbruglawą sepulkę.", nlp)
+    groups = [
+        result.match_stats.in_dictionary,
+        result.match_stats.merged,
+        result.match_stats.unresolved,
+        result.match_stats.no_match,
+    ]
+    assert sum(group.occurrences for group in groups) == result.total_tokens
+    # Merged rows disappear, but each new word they created adds one back.
+    new_words = {merge.to_lemma for merge in result.merges if merge.new_row}
+    rows_before = sum(group.rows for group in groups)
+    assert rows_before - result.match_stats.merged.rows + len(new_words) == result.unique_lemmas
+
+
+def test_analysis_reports_a_real_merge(nlp):
+    result = analyze_text("Bawił się małym krążkiem.", nlp)
+    merge = next(merge for merge in result.merges if merge.from_lemma == "krążk")
+    assert merge.to_lemma == "krążek"
+    assert merge.forms == ["krążkiem"]
+    assert merge.method == "only_match"
+    assert "krążkiem" in merge.example
+
+
+def test_empty_text_has_empty_stats(nlp):
+    result = analyze_text("", nlp)
+    assert result.merges == []
+    assert result.match_stats.merged.rows == 0
+    assert result.match_stats.no_match.occurrences == 0
+
+
+def test_stats_do_not_count_a_merge_twice_when_its_target_comes_later():
+    # Rows are checked in the order the book introduced them, so "mebl" can come first.
+    tallies = {"mebl": _tally({"meble": 1}), "mebel": _tally({"mebli": 2})}
+    _, stats = correct_unknown_lemmas(tallies, {"meble": ["mebel"]}, {"mebel": {}})
+    assert stats.merged.occurrences == 1
+    assert stats.in_dictionary.occurrences == 2
+    assert tallies["mebel"].count == 3

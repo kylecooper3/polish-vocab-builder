@@ -46,6 +46,68 @@ function matchesDictionaryFilter(entry, dictionary) {
   return true
 }
 
+// How many rows to draw at a time in the long tables.
+export const PAGE_SIZE = 200
+
+// The four groups a row can fall into, worked out from the API's match_stats. Each one
+// gets its share of all rows and of all word occurrences, because the two differ a lot:
+// a merged word is often rare, so it can be many rows but little of the book.
+export function matchGroups(stats) {
+  const groups = [
+    {
+      key: 'in_dictionary',
+      label: 'In the dictionary',
+      description: "spaCy's lemma was found as it was.",
+    },
+    {
+      key: 'merged',
+      label: 'Merged',
+      description: "spaCy's lemma wasn't found, but the form in the book pointed to one word.",
+    },
+    {
+      key: 'unresolved',
+      label: 'Possible match, not merged',
+      description: "The form matched the dictionary, but the app couldn't settle on one word.",
+    },
+    {
+      key: 'no_match',
+      label: 'No match',
+      description: 'Not found at all: an invented word, a rare word or a spaCy mistake.',
+    },
+  ]
+  const totalRows = groups.reduce((sum, group) => sum + stats[group.key].rows, 0)
+  const totalOccurrences = groups.reduce((sum, group) => sum + stats[group.key].occurrences, 0)
+  const share = (part, total) => (total === 0 ? 0 : (part / total) * 100)
+
+  return {
+    totalRows,
+    totalOccurrences,
+    groups: groups.map((group) => ({
+      ...group,
+      rows: stats[group.key].rows,
+      occurrences: stats[group.key].occurrences,
+      rowShare: share(stats[group.key].rows, totalRows),
+      occurrenceShare: share(stats[group.key].occurrences, totalOccurrences),
+    })),
+  }
+}
+
+export const MERGE_METHOD_LABELS = { only_match: 'Only match', tie_break: 'Tie-break' }
+
+// Narrows the merge list by how each merge was decided and by any word it involves.
+export function filterMerges(merges, query, kind) {
+  const text = query.trim().toLowerCase()
+  return merges.filter(
+    (merge) =>
+      (kind === 'ALL' ||
+        (kind === 'NEW_ROW' ? merge.new_row : merge.method === kind)) &&
+      (!text ||
+        merge.from_lemma.includes(text) ||
+        merge.to_lemma.includes(text) ||
+        merge.forms.some((form) => form.includes(text))),
+  )
+}
+
 // Finds a word by its dictionary form, any form seen in the book, or its English
 // meaning. So "dog" finds "pies", and so does "psa" if the book uses that form.
 export function searchLemmas(lemmas, query) {

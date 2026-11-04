@@ -71,8 +71,8 @@ def analyze(file: UploadFile = File(...), exclude_stopwords: bool = False):
             detail="No text found. This may be a scanned book, which needs OCR.",
         )
 
-    # Ranks and total_tokens still describe the whole book, so coverage figures
-    # stay honest when stopwords are hidden.
+    # Ranks, totals, match stats and merges still describe the whole book, so the
+    # figures stay honest when stopwords are hidden.
     if exclude_stopwords:
         result.lemmas = [entry for entry in result.lemmas if not entry.is_stopword]
     return result

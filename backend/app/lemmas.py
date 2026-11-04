@@ -3,9 +3,10 @@
 from collections import Counter
 from dataclasses import dataclass, field
 from functools import lru_cache
+from typing import Literal
 
 import spacy
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from spacy.language import Language
 
 from app.translations import load_translations, load_verb_forms, load_word_forms, translate
@@ -52,10 +53,43 @@ class LemmaEntry(BaseModel):
     is_stopword: bool
 
 
+class LemmaMerge(BaseModel):
+    """One row spaCy produced that the app folded into a dictionary word."""
+
+    from_lemma: str
+    to_lemma: str
+    count: int
+    pos: str
+    forms: list[str]
+    example: str
+    method: Literal["only_match", "tie_break"]
+    new_row: bool  # True if spaCy gave the book no correct row for this word
+
+
+class MatchGroup(BaseModel):
+    rows: int = 0
+    occurrences: int = 0
+
+    def add(self, tally: "_Tally") -> None:
+        self.rows += 1
+        self.occurrences += tally.count
+
+
+class MatchStats(BaseModel):
+    """How spaCy's rows matched the dictionary. Every row falls into exactly one group."""
+
+    in_dictionary: MatchGroup = Field(default_factory=MatchGroup)
+    merged: MatchGroup = Field(default_factory=MatchGroup)
+    unresolved: MatchGroup = Field(default_factory=MatchGroup)  # possible matches, none chosen
+    no_match: MatchGroup = Field(default_factory=MatchGroup)
+
+
 class AnalysisResult(BaseModel):
     total_tokens: int
     unique_lemmas: int
     lemmas: list[LemmaEntry]
+    match_stats: MatchStats
+    merges: list[LemmaMerge]
 
 
 @dataclass
@@ -128,7 +162,7 @@ def find_correct_lemma(tally: _Tally, word_forms: dict, rows_in_book: set[str]) 
     """
     targets = set()
     for form in tally.forms:
-        candidates = [] if form in NOT_WORD_FORMS else word_forms.get(form, [])
+        candidates = _candidates(form, word_forms)
         if len(candidates) > 1:
             # "meble" could be "mebel" or "meble", so prefer one this book already uses.
             candidates = [word for word in candidates if word in rows_in_book]
@@ -138,19 +172,58 @@ def find_correct_lemma(tally: _Tally, word_forms: dict, rows_in_book: set[str]) 
     return targets.pop() if len(targets) == 1 else None
 
 
-def correct_unknown_lemmas(tallies: dict[str, _Tally], word_forms: dict, translations: dict) -> None:
+def _candidates(form: str, word_forms: dict) -> list[str]:
+    return [] if form in NOT_WORD_FORMS else word_forms.get(form, [])
+
+
+def correct_unknown_lemmas(
+    tallies: dict[str, _Tally], word_forms: dict, translations: dict
+) -> tuple[list[LemmaMerge], MatchStats]:
     """Merge rows whose lemma isn't in the dictionary into the word they belong to.
 
     A row with no match stays as it is. That may be a word the dictionary doesn't have,
     such as one an author invented, and it still deserves a place in the list.
+
+    Returns a record of every merge and how all the rows matched, written as each
+    decision is made, so people can check what the app actually did.
     """
+    merges = []
+    stats = MatchStats()
     # Decided up front, so the answer doesn't depend on which rows are fixed first.
     rows_in_book = {lemma for lemma in tallies if lemma in translations}
-    for lemma in [lemma for lemma in tallies if lemma not in translations]:
-        target = find_correct_lemma(tallies[lemma], word_forms, rows_in_book)
+    # Counted before any merging, or a row would also include the merges it receives.
+    for lemma in rows_in_book:
+        stats.in_dictionary.add(tallies[lemma])
+    for lemma in [lemma for lemma in tallies if lemma not in rows_in_book]:
+        tally = tallies[lemma]
+        target = find_correct_lemma(tally, word_forms, rows_in_book)
         if target:
             target = LEMMA_MERGES.get(target, target)
+            stats.merged.add(tally)
+            merges.append(_describe_merge(lemma, target, tally, word_forms, rows_in_book))
             _merge_tally(tallies.setdefault(target, _Tally()), tallies.pop(lemma))
+        elif any(_candidates(form, word_forms) for form in tally.forms):
+            stats.unresolved.add(tally)
+        else:
+            stats.no_match.add(tally)
+    merges.sort(key=lambda merge: (-merge.count, merge.from_lemma))
+    return merges, stats
+
+
+def _describe_merge(
+    lemma: str, target: str, tally: _Tally, word_forms: dict, rows_in_book: set[str]
+) -> LemmaMerge:
+    tied = any(len(_candidates(form, word_forms)) > 1 for form in tally.forms)
+    return LemmaMerge(
+        from_lemma=lemma,
+        to_lemma=target,
+        count=tally.count,
+        pos=tally.pos.most_common(1)[0][0],
+        forms=[form for form, _ in tally.forms.most_common()],
+        example=tally.example,
+        method="tie_break" if tied else "only_match",
+        new_row=target not in rows_in_book,
+    )
 
 
 def _merge_tally(target: _Tally, source: _Tally) -> None:
@@ -204,7 +277,7 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
                     tally.example = sentence_text
                     tally.example_is_good = good_length
 
-    correct_unknown_lemmas(tallies, load_word_forms(), translations)
+    merges, match_stats = correct_unknown_lemmas(tallies, load_word_forms(), translations)
 
     # Sorting by lemma as well makes ties come out in the same order every run.
     ordered = sorted(tallies.items(), key=lambda item: (-item[1].count, item[0]))
@@ -225,6 +298,8 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
         total_tokens=total_tokens,
         unique_lemmas=len(entries),
         lemmas=entries,
+        match_stats=match_stats,
+        merges=merges,
     )
 
 
