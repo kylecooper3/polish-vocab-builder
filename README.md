@@ -81,7 +81,7 @@ On macOS or Linux:
 .venv/bin/python -m uvicorn app.main:app --reload
 ```
 
-The API runs at `http://127.0.0.1:8000`, with interactive docs at `/docs`.
+Leave this terminal running. The backend has no page of its own, so you don't need to open its address. If you're curious, its API docs are at `http://127.0.0.1:8000/docs`.
 
 ### Frontend
 
@@ -93,9 +93,15 @@ npm install
 npm run dev
 ```
 
-Then open `http://localhost:5173` and upload a book. There's a public-domain story to try at `sample/katarynka.epub`.
-
 On Windows, if PowerShell says running scripts is disabled, use `npm.cmd` in place of `npm`.
+
+### Open the app
+
+Keep both terminals running, then go to `http://localhost:5173` in your browser. That's the only address you need.
+
+To try it, drag a Polish PDF or EPUB onto the upload box. If you don't have one, use the free story included in this project: the file `katarynka.epub` in the `sample` folder.
+
+**About the addresses:** `localhost` and `127.0.0.1` both mean your own computer, so your copy of the app is only available to you. `5173` and `8000` are the default ports of Vite and Uvicorn, the programs that run the frontend and backend. The app expects those exact ports (they're set in `frontend/src/api.js` and `backend/app/main.py`), so if another program is using one, close it before starting the app.
 
 ### Tests
 
