@@ -6,6 +6,7 @@
   --muted: #5d6570;
   --border: #dfe1e5;
   --accent: #b3263a;
+  --accent-tint: #fbeef0;
   --tag-bg: #eceef1;
   color-scheme: light dark;
 }
@@ -18,6 +19,7 @@
     --muted: #a3aab4;
     --border: #363a40;
     --accent: #f0727f;
+    --accent-tint: #33202a;
     --tag-bg: #2d3136;
   }
 }
@@ -187,13 +189,13 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 20px;
+  gap: 8px 12px;
   margin-bottom: 12px;
 }
 
 .book-summary {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
 
@@ -203,7 +205,11 @@ select {
   flex-wrap: wrap;
   align-items: center;
   gap: 2px 10px;
-  font-size: 0.9rem;
+  padding: 3px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-tint);
+  font-size: 0.85rem;
 }
 
 .coverage p {
@@ -219,8 +225,9 @@ select {
 
 .coverage-figure {
   color: var(--accent);
-  font-size: 1.25rem;
+  font-size: 1.6rem;
   font-weight: 700;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
@@ -233,7 +240,7 @@ select {
 }
 
 .coverage-control input {
-  width: 76px;
+  width: 64px;
   padding: 2px 6px;
 }
 
