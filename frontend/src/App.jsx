@@ -47,14 +47,18 @@ function App() {
   // ("class" is a reserved word) and can include values in {curly braces}.
   return (
     <main className="page">
-      <header>
+      <header className="top-bar">
         <h1>Polish Vocab Builder</h1>
         <p className="subtitle">
           Study the words that matter most, counted by dictionary form.
         </p>
       </header>
 
-      {IS_DEMO ? <DemoNotice /> : <UploadZone onFile={handleFile} disabled={isLoading} />}
+      {IS_DEMO ? (
+        <DemoNotice />
+      ) : (
+        <UploadZone onFile={handleFile} disabled={isLoading} compact={book !== null} />
+      )}
 
       {/* "a && b" shows b only when a is true, so these appear only when relevant. */}
       {isLoading && (

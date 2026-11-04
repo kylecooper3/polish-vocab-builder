@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-function UploadZone({ onFile, disabled }) {
+function UploadZone({ onFile, disabled, compact }) {
   const [isDragging, setIsDragging] = useState(false)
 
   // useEffect is for connecting to things outside React, here the browser window.
@@ -36,7 +36,7 @@ function UploadZone({ onFile, disabled }) {
   }
 
   // Building the class name from state is how the box changes appearance while dragging.
-  const className = `drop-zone${isDragging ? ' drop-zone-active' : ''}${disabled ? ' drop-zone-disabled' : ''}`
+  const className = `drop-zone${isDragging ? ' drop-zone-active' : ''}${disabled ? ' drop-zone-disabled' : ''}${compact ? ' drop-zone-compact' : ''}`
 
   return (
     // A <label> makes the whole box act like the file button, for mouse and keyboard.

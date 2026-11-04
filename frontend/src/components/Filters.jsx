@@ -3,7 +3,7 @@ import { posLabel } from '../lemmaUtils.js'
 // PROPS are a component's inputs, like a Python function's arguments. The parent
 // (App) owns these values. This component only displays them and reports changes
 // by calling the functions it was given.
-function Filters({ search, onSearchChange, filters, onFilterChange, posCodes }) {
+function Filters({ search, onSearchChange, filters, onFilterChange, posCodes, children }) {
   return (
     <section className="filters" aria-label="Filters">
       <label className="field field-wide">
@@ -65,6 +65,9 @@ function Filters({ search, onSearchChange, filters, onFilterChange, posCodes }) 
         />
         Hide stopwords
       </label>
+
+      {/* "children" is whatever the parent puts between <Filters> and </Filters>. */}
+      {children}
     </section>
   )
 }

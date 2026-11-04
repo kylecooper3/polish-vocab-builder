@@ -62,7 +62,13 @@ function ResultsTable({ rows, sortKey, sortDirection, onSort }) {
                 <td>{posLabel(entry.pos)}</td>
                 {/* "||" uses the right side when the left is empty: not every word has a translation. */}
                 <td className="translation">{entry.translation || '—'}</td>
-                <td lang="pl" className="forms">{entry.forms.join(', ')}</td>
+                {/* Common words have dozens of forms, so long lists are cut to two lines
+                    and "title" shows the rest when you hover. Search still finds them all. */}
+                <td lang="pl" className="forms">
+                  <span className="forms-text" title={entry.forms.join(', ')}>
+                    {entry.forms.join(', ')}
+                  </span>
+                </td>
                 <td lang="pl" className="example">
                   <ExampleSentence sentence={entry.example} spans={entry.example_spans} />
                 </td>

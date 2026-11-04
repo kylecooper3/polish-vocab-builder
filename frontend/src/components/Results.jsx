@@ -54,47 +54,50 @@ function Results({ result, filename }) {
 
   return (
     <>
-      <p className="book-summary">
-        <strong>{filename}</strong>: {totalTokens.toLocaleString()} words counted,{' '}
-        {uniqueLemmas.toLocaleString()} unique lemmas
-      </p>
+      <div className="summary-bar">
+        <p className="book-summary">
+          <strong>{filename}</strong>: {totalTokens.toLocaleString()} words counted,{' '}
+          {uniqueLemmas.toLocaleString()} unique lemmas
+        </p>
 
-      <div className="view-switch" role="group" aria-label="Choose a view">
-        <button type="button" aria-pressed={view === 'words'} onClick={() => setView('words')}>
-          Word list
-        </button>
-        <button type="button" aria-pressed={view === 'stats'} onClick={() => setView('stats')}>
-          Statistics
-        </button>
+        {/* Hidden rather than removed, so it keeps its setting between views. */}
+        <div className="summary-coverage" hidden={view !== 'words'}>
+          {/* Passing values down as attributes is how a parent gives a child its props. */}
+          <Coverage lemmas={filtered} totalTokens={totalTokens} />
+        </div>
+
+        <div className="view-switch" role="group" aria-label="Choose a view">
+          <button type="button" aria-pressed={view === 'words'} onClick={() => setView('words')}>
+            Word list
+          </button>
+          <button type="button" aria-pressed={view === 'stats'} onClick={() => setView('stats')}>
+            Statistics
+          </button>
+        </div>
       </div>
 
-      {/* Hidden rather than removed, so the word list keeps its place, "Show more" and
-          coverage setting when you come back to it. */}
+      {/* Also hidden rather than removed, so the word list keeps its place and "Show more". */}
       <div hidden={view !== 'words'}>
-        {/* Passing values down as attributes is how a parent gives a child its props. */}
-        <Coverage lemmas={filtered} totalTokens={totalTokens} />
-
         <Filters
           search={search}
           onSearchChange={setSearch}
           filters={filters}
           onFilterChange={updateFilter}
           posCodes={posOptions(lemmas)}
-        />
-
-        <div className="results-bar">
-          <p className="result-count" aria-live="polite">
-            {rows.length.toLocaleString()} of {lemmas.length.toLocaleString()} lemmas match
-          </p>
+        >
           <button
             type="button"
-            className="button"
+            className="button filters-action"
             onClick={handleExport}
             disabled={rows.length === 0}
           >
             Export {rows.length.toLocaleString()} to CSV for Anki
           </button>
-        </div>
+        </Filters>
+
+        <p className="result-count" aria-live="polite">
+          {rows.length.toLocaleString()} of {lemmas.length.toLocaleString()} lemmas match
+        </p>
 
         <ResultsTable
           rows={rows}
