@@ -165,8 +165,10 @@ export function toAnkiCsv(lemmas) {
 
 // Browsers have no "save file" function for text made in the page. So we wrap the text
 // in a Blob (file-like data), give it a temporary URL, and click a hidden download link.
+// \uFEFF is an invisible marker saying the file is UTF-8. Without it, Excel guesses another
+// encoding and "łódź" turns into "Å‚Ã³dÅº". Anki ignores the marker when importing.
 export function downloadTextFile(text, filename) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
+  const url = URL.createObjectURL(new Blob(['\uFEFF', text], { type: 'text/csv;charset=utf-8' }))
   const link = document.createElement('a')
   link.href = url
   link.download = filename
