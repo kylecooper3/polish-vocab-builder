@@ -122,6 +122,7 @@ python -m pytest
       "translation": "patron, sponsor; lawyer, advocate",
       "forms": ["mecenas", "mecenasa", "mecenasem", "mecenasowi"],
       "example": "Gdy został mecenasem, czoło, skutkiem natężonej pracy umysłowej, urosło mu aż do ciemienia...",
+      "example_spans": [[11, 20]],
       "is_stopword": false
     }
   ],
@@ -139,12 +140,15 @@ python -m pytest
       "pos": "NOUN",
       "forms": ["krążkiem"],
       "example": "Czerwona wiśnia stała się dla niej wiśnią gładką, okrągłą i miękką...",
+      "example_spans": [[113, 121]],
       "method": "only_match",
       "new_row": true
     }
   ]
 }
 ```
+
+`example_spans` gives the start and end position of each use of the word in its example, measured in characters, so the page can bold exactly the words counted for that row.
 
 `match_stats` puts every row spaCy produced into one group, before any merging. `merges` lists each row that was merged, biggest first. `method` is `only_match` when a form pointed to one word, or `tie_break` when the word already in the book was chosen. `new_row` means the book had no correct row for that word. Both describe the whole book, even with `exclude_stopwords=true`.
 

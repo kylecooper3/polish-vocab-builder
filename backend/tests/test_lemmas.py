@@ -164,7 +164,7 @@ def test_short_text_is_one_chunk():
     assert split_into_chunks("") == []
 
 
-def _tally(forms, pos="NOUN", example="", good_example=False, stop_count=0):
+def _tally(forms, pos="NOUN", example="", good_example=False, stop_count=0, spans=None):
     return _Tally(
         count=sum(forms.values()),
         stop_count=stop_count,
@@ -172,6 +172,7 @@ def _tally(forms, pos="NOUN", example="", good_example=False, stop_count=0):
         pos=Counter({pos: sum(forms.values())}),
         example=example,
         example_is_good=good_example,
+        example_spans=spans or [],
     )
 
 
@@ -427,3 +428,66 @@ def test_pronoun_forms_stay_together_within_their_row(nlp):
     result = analyze_text("Ona śpi. Widzę ją codziennie. Dałem jej książkę.", nlp)
     assert set(_entry(result, "ona").forms) == {"ona", "ją", "jej"}
     assert _entry(result, "on") is None
+
+
+def _bolded(entry):
+    return [entry.example[start:end] for start, end in entry.example_spans]
+
+
+def test_example_marks_only_words_counted_under_that_row(nlp):
+    # spaCy counts the first "To" under "ten" and the second under "to".
+    result = analyze_text("To dziecko to mój syn.", nlp)
+    assert _entry(result, "ten").example_spans == [(0, 2)]
+    assert _entry(result, "to").example_spans == [(11, 13)]
+
+
+def test_example_marks_every_use_of_the_word_in_its_sentence(nlp):
+    entry = _entry(analyze_text("Jak ten czas leci, jak ten czas leci.", nlp), "ten")
+    assert _bolded(entry) == ["ten", "ten"]
+
+
+def test_example_marks_the_right_place_after_extra_spaces_are_removed(nlp):
+    entry = _entry(analyze_text("Mój   stary\npies bardzo lubi długie spacery.", nlp), "pies")
+    assert entry.example.startswith("Mój stary pies")
+    assert _bolded(entry) == ["pies"]
+
+
+def test_example_marks_only_the_sentence_it_kept(nlp):
+    text = "Pies! Mój stary pies bardzo lubi długie spacery po lesie."
+    entry = _entry(analyze_text(text, nlp), "pies")
+    assert entry.example.startswith("Mój stary")
+    assert entry.example_spans == [(10, 14)]
+
+
+def test_a_repeated_sentence_does_not_add_more_marks(nlp):
+    entry = _entry(analyze_text("Mój pies śpi.\n\nMój pies śpi.", nlp), "pies")
+    assert entry.example_spans == [(4, 8)]
+
+
+def test_merged_row_keeps_marks_when_its_example_is_used():
+    tallies = {
+        "krążk": _tally({"krążkiem": 1}, example="Bawił się krążkiem.", spans=[(10, 18)])
+    }
+    merges, _ = correct_unknown_lemmas(tallies, {"krążkiem": ["krążek"]}, {"krążek": {}})
+    assert tallies["krążek"].example_spans == [(10, 18)]
+    assert merges[0].example_spans == [(10, 18)]
+
+
+def test_merged_row_does_not_add_marks_to_a_different_sentence():
+    tallies = {
+        "mebel": _tally({"mebli": 1}, example="Nie ma mebli.", good_example=True, spans=[(7, 12)]),
+        "mebl": _tally({"meble": 1}, example="Stare meble stoją.", good_example=True, spans=[(6, 11)]),
+    }
+    correct_unknown_lemmas(tallies, {"meble": ["mebel"]}, {"mebel": {}})
+    assert tallies["mebel"].example == "Nie ma mebli."
+    assert tallies["mebel"].example_spans == [(7, 12)]
+
+
+def test_merged_row_combines_marks_in_the_same_sentence():
+    sentence = "Stare meble i mebli."
+    tallies = {
+        "mebel": _tally({"mebli": 1}, example=sentence, spans=[(14, 19)]),
+        "mebl": _tally({"meble": 1}, example=sentence, spans=[(6, 11)]),
+    }
+    correct_unknown_lemmas(tallies, {"meble": ["mebel"]}, {"mebel": {}})
+    assert tallies["mebel"].example_spans == [(6, 11), (14, 19)]

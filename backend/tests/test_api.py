@@ -28,7 +28,7 @@ def test_pdf_upload_returns_lemma_list(client, make_pdf):
     entry = next(item for item in body["lemmas"] if item["lemma"] == "mieć")
     assert entry["count"] == 3
     assert set(entry) == {
-        "lemma", "count", "rank", "pos", "translation", "forms", "example", "is_stopword",
+        "lemma", "count", "rank", "pos", "translation", "forms", "example", "example_spans", "is_stopword",
     }
 
 
@@ -102,7 +102,7 @@ def test_response_includes_match_stats_and_merges(client, make_pdf):
     assert set(body["match_stats"]["merged"]) == {"rows", "occurrences"}
     merge = next(item for item in body["merges"] if item["from_lemma"] == "krążk")
     assert set(merge) == {
-        "from_lemma", "to_lemma", "count", "pos", "forms", "example", "method", "new_row",
+        "from_lemma", "to_lemma", "count", "pos", "forms", "example", "example_spans", "method", "new_row",
     }
 
 

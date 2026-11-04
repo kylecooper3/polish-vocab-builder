@@ -46,19 +46,22 @@ function matchesDictionaryFilter(entry, dictionary) {
   return true
 }
 
-// Splits a sentence into pieces, marking the ones that are forms of the word. \b only
-// understands English letters, so it would treat "ł" as a gap between words. These
-// checks use \p{L}, meaning a letter in any language, so "pies" doesn't match in "piesek".
-export function splitAroundForms(sentence, forms) {
-  const words = forms.map((form) => form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  if (!words) return [{ text: sentence, isMatch: false }]
+// Splits a sentence into pieces, marking the words the backend counted for this row. It
+// goes by position rather than spelling, because "to" can belong to "ten" in one place
+// and to "to" in another. Array.from counts characters the way Python does: plain string
+// positions in JavaScript would drift after a character like an emoji.
+export function splitBySpans(sentence, spans) {
+  const characters = Array.from(sentence)
+  const piece = (from, to, isMatch) => ({ text: characters.slice(from, to).join(''), isMatch })
 
-  const pattern = new RegExp(`(?<!\\p{L})(${words})(?!\\p{L})`, 'giu')
-  // split() with a (group) keeps what matched, so matches land at the odd positions.
-  return sentence
-    .split(pattern)
-    .map((text, index) => ({ text, isMatch: index % 2 === 1 }))
-    .filter((piece) => piece.text)
+  const pieces = []
+  let position = 0
+  for (const [start, end] of spans) {
+    pieces.push(piece(position, start, false), piece(start, end, true))
+    position = end
+  }
+  pieces.push(piece(position, characters.length, false))
+  return pieces.filter((part) => part.text)
 }
 
 // How many rows to draw at a time in the long tables.

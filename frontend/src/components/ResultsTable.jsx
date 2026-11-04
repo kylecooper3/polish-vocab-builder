@@ -64,7 +64,7 @@ function ResultsTable({ rows, sortKey, sortDirection, onSort }) {
                 <td className="translation">{entry.translation || '—'}</td>
                 <td lang="pl" className="forms">{entry.forms.join(', ')}</td>
                 <td lang="pl" className="example">
-                  <ExampleSentence sentence={entry.example} forms={entry.forms} />
+                  <ExampleSentence sentence={entry.example} spans={entry.example_spans} />
                 </td>
               </tr>
             ))}

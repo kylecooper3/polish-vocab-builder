@@ -53,6 +53,7 @@ class LemmaEntry(BaseModel):
     translation: str
     forms: list[str]
     example: str
+    example_spans: list[tuple[int, int]]  # where this word is in the example (start, end)
     is_stopword: bool
 
 
@@ -65,6 +66,7 @@ class LemmaMerge(BaseModel):
     pos: str
     forms: list[str]
     example: str
+    example_spans: list[tuple[int, int]]
     method: Literal["only_match", "tie_break"]
     new_row: bool  # True if spaCy gave the book no correct row for this word
 
@@ -105,6 +107,8 @@ class _Tally:
     pos: Counter = field(default_factory=Counter)
     example: str = ""
     example_is_good: bool = False
+    example_spans: list = field(default_factory=list)
+    example_sentence: int = -1  # which sentence of the book the example came from
 
 
 @lru_cache(maxsize=1)
@@ -155,6 +159,20 @@ def fix_verb_lemma(form: str, lemma: str, pos: str, verb_forms: dict, translatio
     if lemma in translations and lemma != form:
         return lemma
     return verb_forms.get(form, lemma)
+
+
+def _word_starts(sentence, sentence_text: str) -> dict[int, int]:
+    """Find where each word sits in the sentence once its extra spaces are removed."""
+    starts = {}
+    position = 0
+    for token in sentence:
+        if token.is_space:
+            continue
+        start = sentence_text.find(token.text, position)
+        if start != -1:
+            starts[token.i] = start
+            position = start + len(token.text)
+    return starts
 
 
 def split_pronoun(lemma: str, pos: str, morph, form: str) -> str:
@@ -249,6 +267,7 @@ def _describe_merge(
         pos=tally.pos.most_common(1)[0][0],
         forms=[form for form, _ in tally.forms.most_common()],
         example=tally.example,
+        example_spans=tally.example_spans,
         method="tie_break" if tied else "only_match",
         new_row=target not in rows_in_book,
     )
@@ -262,6 +281,10 @@ def _merge_tally(target: _Tally, source: _Tally) -> None:
     if not target.example or (source.example_is_good and not target.example_is_good):
         target.example = source.example
         target.example_is_good = source.example_is_good
+        target.example_spans = source.example_spans
+    elif target.example == source.example:
+        # Both rows chose the same sentence, so all of these words are now this word.
+        target.example_spans = sorted({*target.example_spans, *source.example_spans})
 
 
 def analyze_text(text: str, nlp) -> AnalysisResult:
@@ -272,9 +295,12 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
 
     # By default nlp.pipe groups up to 1,000 texts into a batch, which would process
     # every chunk at once and undo the memory saving of splitting the text.
+    sentence_number = 0
     for doc in nlp.pipe(split_into_chunks(text), batch_size=1):
         for sentence in doc.sents:
+            sentence_number += 1
             sentence_text = " ".join(sentence.text.split())
+            word_starts = _word_starts(sentence, sentence_text)
             word_count = sum(1 for token in sentence if not token.is_punct and not token.is_space)
             good_length = MIN_EXAMPLE_WORDS <= word_count <= MAX_EXAMPLE_WORDS
 
@@ -305,6 +331,14 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
                 if not tally.example or (good_length and not tally.example_is_good):
                     tally.example = sentence_text
                     tally.example_is_good = good_length
+                    tally.example_spans = []
+                    tally.example_sentence = sentence_number
+
+                # Recorded word by word, because spelling alone can't tell which row a
+                # word belongs to: "to" can be counted under "ten" or under "to".
+                if tally.example_sentence == sentence_number and token.i in word_starts:
+                    start = word_starts[token.i]
+                    tally.example_spans.append((start, start + len(token.text)))
 
     merges, match_stats = correct_unknown_lemmas(tallies, load_word_forms(), translations)
 
@@ -319,6 +353,7 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
             translation=translate(lemma, tally.pos.most_common(1)[0][0], translations),
             forms=[form for form, _ in tally.forms.most_common()],
             example=tally.example,
+            example_spans=tally.example_spans,
             is_stopword=_is_stopword(lemma, tally, nlp),
         )
         for rank, (lemma, tally) in enumerate(ordered, start=1)

@@ -53,3 +53,12 @@ def test_match_stats_add_up_to_the_whole_book(nlp):
     assert sum(group.occurrences for group in groups) == result.total_tokens
     assert stats.merged.rows == len(result.merges)
     assert stats.merged.occurrences == sum(merge.count for merge in result.merges)
+
+
+def test_example_marks_always_point_at_a_form_of_that_word(nlp):
+    text = clean_pages(extract_pages(SAMPLE.read_bytes(), SAMPLE.name))
+    result = analyze_text(text, nlp)
+    for entry in [*result.lemmas, *result.merges]:
+        assert entry.example_spans, entry
+        for start, end in entry.example_spans:
+            assert entry.example[start:end].lower() in entry.forms, entry

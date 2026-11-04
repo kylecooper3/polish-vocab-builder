@@ -77,7 +77,7 @@ function MergeReview({ merges, lemmas }) {
                       {merge.new_row && <span className="tag merge-tag">new word</span>}
                     </td>
                     <td lang="pl" className="example">
-                      <ExampleSentence sentence={merge.example} forms={merge.forms} />
+                      <ExampleSentence sentence={merge.example} spans={merge.example_spans} />
                     </td>
                   </tr>
                 ))}
