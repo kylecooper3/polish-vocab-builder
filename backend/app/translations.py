@@ -12,7 +12,6 @@ DATA_FILE = DATA_FOLDER / "translations.json"
 # Hand-written fixes for common words, where a learner would notice a poor translation.
 OVERRIDES_FILE = DATA_FOLDER / "translation_overrides.json"
 
-WORD_FORMS_FILE = DATA_FOLDER / "word_forms.json.gz"
 LEMMA_OPTIONS_FILE = DATA_FOLDER / "lemma_options.json.gz"
 
 # spaCy and Wiktionary name parts of speech differently, and don't always agree. Where
@@ -41,6 +40,7 @@ class LemmaOptions:
 
     real_words: set[str]
     options: dict[str, str]  # {"rozumie": "noun=rozum;verb=rozumieć"}
+    fallback: dict[str, list[str]]  # {"największej": ["największy"]}, when options has nothing
 
     def for_form(self, form: str, spacy_pos: str) -> tuple[set[str], set[str]]:
         """Return the words matching spaCy's part of speech, and every word."""
@@ -65,17 +65,15 @@ def load_translations() -> dict[str, dict[str, str]]:
 
 
 @lru_cache(maxsize=1)
-def load_word_forms() -> dict[str, list[str]]:
-    """Forms of all kinds and the words they could belong to: {"meble": ["mebel", "meble"]}."""
-    return json.loads(gzip.decompress(WORD_FORMS_FILE.read_bytes()))
-
-
-@lru_cache(maxsize=1)
 def load_lemma_options() -> LemmaOptions:
     data = json.loads(gzip.decompress(LEMMA_OPTIONS_FILE.read_bytes()))
     # A word with a hand-written translation is a real word, even if Wiktionary lacks it.
     overrides = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
-    return LemmaOptions(real_words={*data["real_words"], *overrides}, options=data["options"])
+    return LemmaOptions(
+        real_words={*data["real_words"], *overrides},
+        options=data["options"],
+        fallback=data["fallback"],
+    )
 
 
 def apply_overrides(table: dict, overrides: dict) -> dict:

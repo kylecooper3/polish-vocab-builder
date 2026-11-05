@@ -8,13 +8,13 @@ from app.translations import (
     load_translations,
     LemmaOptions,
     load_lemma_options,
-    load_word_forms,
     translate,
 )
 from scripts.build_translations import (
     KEPT_POS,
     build_table,
     build_lemma_options,
+    build_fallback,
     build_word_forms,
     clean_meaning,
 )
@@ -329,8 +329,19 @@ def test_word_forms_skip_words_without_a_translation():
     assert build_word_forms(records, {"pies"}) == {}
 
 
-def test_word_form_table_finds_a_real_noun():
-    assert load_word_forms()["krążkiem"] == ["krążek"]
+def test_fallback_only_keeps_single_words_the_options_lack():
+    word_forms = {
+        "największej": ["największy"],
+        "krążkiem": ["krążek"],
+        "czarny rynek": ["czarny rynek"],
+    }
+    assert build_fallback(word_forms, {"krążkiem": "noun=krążek"}) == {"największej": ["największy"]}
+
+
+def test_real_fallback_has_the_words_the_options_miss():
+    options = load_lemma_options()
+    assert options.fallback["największej"] == ["największy"]
+    assert not set(options.fallback) & set(options.options)
 
 
 def _sense_of(gloss, target=None, tags=()):
@@ -408,7 +419,7 @@ def test_multi_word_links_and_names_are_left_out():
 
 
 def test_for_form_separates_the_tag_from_every_option():
-    options = LemmaOptions(real_words=set(), options={"rozumie": "noun=rozum;verb=rozumieć"})
+    options = LemmaOptions(real_words=set(), options={"rozumie": "noun=rozum;verb=rozumieć"}, fallback={})
     assert options.for_form("rozumie", "VERB") == ({"rozumieć"}, {"rozum", "rozumieć"})
     assert options.for_form("rozumie", "ADP") == (set(), {"rozum", "rozumieć"})
     assert options.for_form("xyz", "NOUN") == (set(), set())

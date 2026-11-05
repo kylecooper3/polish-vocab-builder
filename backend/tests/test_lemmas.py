@@ -267,12 +267,12 @@ def test_a_repeated_sentence_does_not_add_more_marks(nlp):
     assert entry.example_spans == [(4, 8)]
 
 
-def _options(real_words=(), **forms):
-    return LemmaOptions(real_words=set(real_words), options=forms)
+def _options(real_words=(), fallback=None, **forms):
+    return LemmaOptions(real_words=set(real_words), options=forms, fallback=fallback or {})
 
 
-def _chosen(form, lemma, pos, options, word_forms=None, rows=()):
-    return choose_lemma(form, lemma, pos, options, word_forms or {}, set(rows))
+def _chosen(form, lemma, pos, options, rows=()):
+    return choose_lemma(form, lemma, pos, options, set(rows))
 
 
 def test_agreement_keeps_spacys_lemma():
@@ -333,8 +333,9 @@ def test_a_tie_with_no_clear_answer_stays_unresolved():
         assert (choice.lemma, choice.group) == ("robocie", "unresolved")
 
 
-def test_the_form_table_is_the_fallback():
-    choice = _chosen("największej", "największej", "ADJ", _options(), {"największej": ["największy"]})
+def test_the_fallback_is_used_when_options_has_nothing():
+    options = _options(fallback={"największej": ["największy"]})
+    choice = _chosen("największej", "największej", "ADJ", options)
     assert (choice.lemma, choice.group) == ("największy", "merged")
 
 
@@ -369,7 +370,7 @@ def test_forms_of_one_spacy_row_can_go_to_different_words():
     options = _options({"pies", "kot"}, aa="noun=pies", bb="noun=kot")
     rows, merges, _ = resolve_lemmas(
         _readings(("xx", "aa", "NOUN", False, _reading(1)), ("xx", "bb", "NOUN", False, _reading(2))),
-        options, {},
+        options,
     )
     assert (rows["pies"].count, rows["kot"].count) == (1, 2)
     assert {(merge.from_lemma, merge.to_lemma) for merge in merges} == {("xx", "pies"), ("xx", "kot")}
@@ -377,7 +378,7 @@ def test_forms_of_one_spacy_row_can_go_to_different_words():
 
 def test_a_settled_pronoun_is_not_checked_again():
     options = _options({"ona", "jej"}, jej="pron=jej,ona")
-    rows, merges, _ = resolve_lemmas(_readings(("ona", "jej", "PRON", True, _reading(3))), options, {})
+    rows, merges, _ = resolve_lemmas(_readings(("ona", "jej", "PRON", True, _reading(3))), options)
     assert rows["ona"].count == 3
     assert merges == []
 
@@ -389,7 +390,7 @@ def test_merging_combines_counts_forms_and_stopwords():
             ("mebel", "mebli", "NOUN", False, _reading(2)),
             ("mebl", "meble", "NOUN", False, _reading(1, stop=1)),
         ),
-        options, {},
+        options,
     )
     assert set(rows) == {"mebel"}
     assert rows["mebel"].count == 3
@@ -405,7 +406,7 @@ def test_a_row_keeps_the_earliest_good_example():
             ("mebel", "mebli", "NOUN", False, _reading(1, "Late.", True, 9, [(0, 5)])),
             ("mebl", "meble", "NOUN", False, _reading(1, "Early.", True, 2, [(0, 6)])),
         ),
-        options, {},
+        options,
     )
     assert rows["mebel"].example == "Early."
     assert rows["mebel"].example_spans == [(0, 6)]
@@ -418,7 +419,7 @@ def test_a_good_example_beats_a_short_one():
             ("mebel", "mebli", "NOUN", False, _reading(1, "Mebli!", False, 1, [(0, 5)])),
             ("mebl", "meble", "NOUN", False, _reading(1, "Stare meble tu stoją razem.", True, 8, [(6, 11)])),
         ),
-        options, {},
+        options,
     )
     assert rows["mebel"].example.startswith("Stare")
     assert rows["mebel"].example_is_good is True
@@ -432,7 +433,7 @@ def test_forms_in_the_same_sentence_are_all_marked():
             ("mebel", "mebli", "NOUN", False, _reading(1, sentence, False, 3, [(14, 19)])),
             ("mebl", "meble", "NOUN", False, _reading(1, sentence, False, 3, [(6, 11)])),
         ),
-        options, {},
+        options,
     )
     assert rows["mebel"].example_spans == [(6, 11), (14, 19)]
 
@@ -447,7 +448,7 @@ def test_stats_put_every_spacy_row_in_one_group_and_count_every_use():
             ("palc", "palcach", "NOUN", False, _reading(5)),
             ("sepulka", "sepulki", "NOUN", False, _reading(4)),
         ),
-        options, {},
+        options,
     )
     assert (stats.in_dictionary.rows, stats.in_dictionary.occurrences) == (1, 2)
     assert (stats.merged.rows, stats.merged.occurrences) == (1, 3)
@@ -459,7 +460,7 @@ def test_a_row_split_between_groups_counts_once_under_its_biggest_group():
     options = _options({"pies"}, aa="noun=pies")
     _, _, stats = resolve_lemmas(
         _readings(("xx", "aa", "NOUN", False, _reading(5)), ("xx", "bb", "NOUN", False, _reading(1))),
-        options, {},
+        options,
     )
     assert (stats.merged.rows, stats.merged.occurrences) == (1, 5)
     assert (stats.no_match.rows, stats.no_match.occurrences) == (0, 1)
@@ -473,7 +474,7 @@ def test_merges_are_described_with_the_biggest_first():
             ("meble_", "meble", "NOUN", False, _reading(1, "Stare meble.", spans=[(6, 11)])),
             ("krążk", "krążkiem", "NOUN", False, _reading(3)),
         ),
-        options, {},
+        options,
     )
     assert [merge.from_lemma for merge in merges] == ["krążk", "meble_"]
     tied = merges[1]
@@ -507,8 +508,8 @@ def test_real_sentences_get_the_right_word(nlp, sentence, form, lemma):
     assert entry is not None and form in entry.forms
 
 
-def test_a_lemma_confirmed_by_the_form_table_is_not_counted_as_merged():
-    choice = _chosen("kąciku", "kącik", "NOUN", _options(), {"kąciku": ["kącik"]})
+def test_a_lemma_confirmed_by_the_fallback_is_not_counted_as_merged():
+    choice = _chosen("kąciku", "kącik", "NOUN", _options(fallback={"kąciku": ["kącik"]}))
     assert (choice.lemma, choice.group) == ("kącik", "in_dictionary")
 
 

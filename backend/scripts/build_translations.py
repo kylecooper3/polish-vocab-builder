@@ -16,7 +16,6 @@ from collections import defaultdict
 from pathlib import Path
 
 OUTPUT_FILE = Path(__file__).parent.parent / "data" / "translations.json"
-WORD_FORMS_FILE = OUTPUT_FILE.parent / "word_forms.json.gz"
 LEMMA_OPTIONS_FILE = OUTPUT_FILE.parent / "lemma_options.json.gz"
 
 # Entries in a verb's table that aren't forms of that verb.
@@ -287,6 +286,16 @@ def build_lemma_options(records) -> dict:
     }
 
 
+def build_fallback(word_forms: dict[str, list[str]], options: dict[str, str]) -> dict[str, list[str]]:
+    """Keep the single-word spellings the options don't cover, like "największej".
+
+    The app only looks here when a spelling has no options, so anything else is never read.
+    """
+    return {
+        form: words for form, words in word_forms.items() if form not in options and " " not in form
+    }
+
+
 def write_compressed_json(path: Path, data: dict) -> None:
     # mtime=0 means a rebuild with the same data gives an identical file for Git.
     path.write_bytes(
@@ -299,13 +308,13 @@ def main(source: str) -> None:
         table = build_table(json.loads(line) for line in handle)
     with open(source, encoding="utf-8") as handle:
         word_forms = build_word_forms((json.loads(line) for line in handle), set(table))
-    write_compressed_json(WORD_FORMS_FILE, word_forms)
-    print(f"{len(word_forms):,} word forms, {WORD_FORMS_FILE.stat().st_size / 1e6:.1f} MB")
     with open(source, encoding="utf-8") as handle:
         lemma_options = build_lemma_options(json.loads(line) for line in handle)
+    lemma_options["fallback"] = build_fallback(word_forms, lemma_options["options"])
     write_compressed_json(LEMMA_OPTIONS_FILE, lemma_options)
     print(
         f"{len(lemma_options['real_words']):,} real words, {len(lemma_options['options']):,} spellings, "
+        f"{len(lemma_options['fallback']):,} fallback spellings, "
         f"{LEMMA_OPTIONS_FILE.stat().st_size / 1e6:.1f} MB"
     )
     OUTPUT_FILE.parent.mkdir(exist_ok=True)

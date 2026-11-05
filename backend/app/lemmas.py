@@ -13,7 +13,6 @@ from app.translations import (
     LemmaOptions,
     load_lemma_options,
     load_translations,
-    load_word_forms,
     translate,
 )
 
@@ -201,7 +200,7 @@ def split_pronoun(lemma: str, pos: str, morph, form: str) -> str:
 
 
 def choose_lemma(
-    form: str, lemma: str, pos: str, options: LemmaOptions, word_forms: dict, rows_in_book: set[str]
+    form: str, lemma: str, pos: str, options: LemmaOptions, rows_in_book: set[str]
 ) -> Choice:
     """Compare spaCy's lemma and part of speech with Wiktionary, and decide which to trust.
 
@@ -226,8 +225,8 @@ def choose_lemma(
             return Choice(next(iter(matching)), "merged")
         return Choice(lemma, "in_dictionary")
 
-    # The form table also covers entries that are only forms themselves, like "najwyższy".
-    candidates = matching or every or set(word_forms.get(form, []))
+    # The fallback covers entries that are only forms themselves, like "najwyższy".
+    candidates = matching or every or set(options.fallback.get(form, []))
     if not candidates:
         return Choice(lemma, "no_match")
     tied = len(candidates) > 1
@@ -242,7 +241,7 @@ def choose_lemma(
 
 
 def resolve_lemmas(
-    readings: dict[tuple, _Tally], options: LemmaOptions, word_forms: dict
+    readings: dict[tuple, _Tally], options: LemmaOptions
 ) -> tuple[dict[str, _Tally], list[LemmaMerge], MatchStats]:
     """Turn what was read into the final rows, deciding each form separately.
 
@@ -261,7 +260,7 @@ def resolve_lemmas(
         choice = (
             Choice(lemma, "in_dictionary")
             if settled
-            else choose_lemma(form, lemma, pos, options, word_forms, rows_in_book)
+            else choose_lemma(form, lemma, pos, options, rows_in_book)
         )
         target = LEMMA_MERGES.get(choice.lemma, choice.lemma)
         uses_by_group[lemma][choice.group] += tally.count
@@ -369,7 +368,7 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
                     start = word_starts[token.i]
                     tally.example_spans.append((start, start + len(token.text)))
 
-    tallies, merges, match_stats = resolve_lemmas(readings, load_lemma_options(), load_word_forms())
+    tallies, merges, match_stats = resolve_lemmas(readings, load_lemma_options())
 
     # Sorting by lemma as well makes ties come out in the same order every run.
     ordered = sorted(tallies.items(), key=lambda item: (-item[1].count, item[0]))
