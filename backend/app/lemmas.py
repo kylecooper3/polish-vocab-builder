@@ -39,6 +39,11 @@ LEMMA_MERGES = {"wybory": "wybór", "zdrów": "zdrowy"}
 # ago"). "lewo" is "left", as in "w lewo", and "kuzynka" is a female cousin, not "kuzynek".
 NOT_WORD_FORMS = {"bylem", "zdrów", "dziw", "laty", "lewo", "kuzynka"}
 
+# A form whose part of speech settles it, where Wiktionary lists several words. spaCy can
+# tag "je" ("eats") as a verb but still give it the lemma "on" ("he"), and Wiktionary also
+# lists it under "być" ("to be"), which isn't its modern meaning.
+LEMMA_BY_FORM_AND_POS = {("je", "VERB"): "jeść"}
+
 # The forms of "ono" ("it") that aren't also spelled the same as a form of "on" ("he").
 NEUTER_ONLY_FORMS = {"ono", "je"}
 
@@ -205,6 +210,9 @@ def choose_lemma(
     A real word is only replaced when the form can't belong to it and one other word fits.
     Anything unclear stays as it is, because a blank row is better than a wrong one.
     """
+    if (form, pos) in LEMMA_BY_FORM_AND_POS:
+        return Choice(LEMMA_BY_FORM_AND_POS[(form, pos)], "merged")
+
     in_dictionary = lemma in options.real_words
     if form in NOT_WORD_FORMS:
         return Choice(lemma, "in_dictionary" if in_dictionary else "no_match")

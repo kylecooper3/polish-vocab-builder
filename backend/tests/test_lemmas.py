@@ -316,8 +316,8 @@ def test_a_real_word_is_not_replaced_by_the_form_itself():
 
 
 def test_a_real_word_is_kept_when_several_others_fit():
-    options = _options({"on", "jeść", "być"}, je="verb=być,jeść")
-    assert _chosen("je", "on", "VERB", options).lemma == "on"
+    options = _options({"kot", "pies", "ryba"}, xx="noun=pies,ryba")
+    assert _chosen("xx", "kot", "NOUN", options).lemma == "kot"
 
 
 def test_a_tie_is_settled_by_a_word_already_in_the_book():
@@ -510,3 +510,22 @@ def test_real_sentences_get_the_right_word(nlp, sentence, form, lemma):
 def test_a_lemma_confirmed_by_the_form_table_is_not_counted_as_merged():
     choice = _chosen("kąciku", "kącik", "NOUN", _options(), {"kąciku": ["kącik"]})
     assert (choice.lemma, choice.group) == ("kącik", "in_dictionary")
+
+
+def test_je_tagged_as_a_verb_means_eats():
+    options = _options({"on", "jeść", "być"}, je="verb=być,jeść;pron=one,ono")
+    choice = _chosen("je", "on", "VERB", options)
+    assert (choice.lemma, choice.group) == ("jeść", "merged")
+
+
+def test_je_tagged_as_a_pronoun_is_left_to_the_other_rules():
+    options = _options({"on", "one", "ono"}, je="pron=one,ono")
+    assert _chosen("je", "on", "PRON", options).lemma == "on"
+
+
+def test_eats_and_them_land_in_different_rows(nlp):
+    eats = _entry(analyze_text("On je obiad.", nlp), "jeść")
+    assert eats is not None and "je" in eats.forms
+    assert "eat" in eats.translation
+    them = _entry(analyze_text("Książki leżą na stole, weź je.", nlp), "one")
+    assert them is not None and "je" in them.forms
