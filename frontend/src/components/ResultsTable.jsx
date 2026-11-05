@@ -14,7 +14,15 @@ const SORTABLE_COLUMNS = [
   { key: 'pos', label: 'Part of speech' },
 ]
 
-function ResultsTable({ rows, sortKey, sortDirection, onSort, leftOut, onToggleLeftOut }) {
+function ResultsTable({
+  rows,
+  sortKey,
+  sortDirection,
+  onSort,
+  leftOut,
+  onToggleLeftOut,
+  showExportColumn,
+}) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
   // A component is just a function, so an ordinary "if" can return a message
@@ -31,7 +39,7 @@ function ResultsTable({ rows, sortKey, sortDirection, onSort, leftOut, onToggleL
         <table>
           <thead>
             <tr>
-              <th>Export</th>
+              {showExportColumn && <th>Export</th>}
               {SORTABLE_COLUMNS.map((column) => {
                 const isActive = column.key === sortKey
                 const ariaSort = sortDirection === 'asc' ? 'ascending' : 'descending'
@@ -54,14 +62,16 @@ function ResultsTable({ rows, sortKey, sortDirection, onSort, leftOut, onToggleL
           <tbody>
             {rows.slice(0, visibleCount).map((entry) => (
               <tr key={entry.lemma} className={leftOut.has(entry.lemma) ? 'left-out' : undefined}>
-                <td className="export-cell">
-                  <input
-                    type="checkbox"
-                    aria-label={`Include ${entry.lemma} in the export`}
-                    checked={!leftOut.has(entry.lemma)}
-                    onChange={() => onToggleLeftOut(entry.lemma)}
-                  />
-                </td>
+                {showExportColumn && (
+                  <td className="export-cell">
+                    <input
+                      type="checkbox"
+                      aria-label={`Include ${entry.lemma} in the export`}
+                      checked={!leftOut.has(entry.lemma)}
+                      onChange={() => onToggleLeftOut(entry.lemma)}
+                    />
+                  </td>
+                )}
                 <td className="number">{entry.rank}</td>
                 <td lang="pl">
                   <span className="lemma">{entry.lemma}</span>

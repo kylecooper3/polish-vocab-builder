@@ -25,6 +25,7 @@ function Results({ result, filename }) {
   const [sortDirection, setSortDirection] = useState('asc')
   // The lemmas unticked for export. A Set is a list that can answer "is this in here?" quickly.
   const [leftOut, setLeftOut] = useState(new Set())
+  const [editingExport, setEditingExport] = useState(false)
 
   function toggleLeftOut(lemma) {
     // As with filters, React needs a new Set to notice the change, not an edited old one.
@@ -110,7 +111,15 @@ function Results({ result, filename }) {
         </Filters>
 
         <p className="result-count" aria-live="polite">
-          {rows.length.toLocaleString()} of {lemmas.length.toLocaleString()} lemmas match
+          {rows.length.toLocaleString()} of {lemmas.length.toLocaleString()} lemmas match ·{' '}
+          <button
+            type="button"
+            className="text-button"
+            aria-pressed={editingExport}
+            onClick={() => setEditingExport(!editingExport)}
+          >
+            {editingExport ? 'Done editing' : 'Edit export list'}
+          </button>
           {leftOut.size > 0 && (
             <>
               {' '}· {leftOut.size.toLocaleString()} left out of the export{' '}
@@ -128,6 +137,7 @@ function Results({ result, filename }) {
           onSort={handleSort}
           leftOut={leftOut}
           onToggleLeftOut={toggleLeftOut}
+          showExportColumn={editingExport}
         />
       </div>
 
