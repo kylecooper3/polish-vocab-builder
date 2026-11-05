@@ -593,3 +593,10 @@ def test_a_word_that_ends_where_it_started_is_not_counted_as_merged():
     rows, merges, stats = resolve_lemmas(readings, options)
     assert merges == []
     assert (stats.merged.occurrences, stats.in_dictionary.occurrences) == (0, 1)
+
+
+def test_the_model_skips_parts_the_app_does_not_use(nlp):
+    assert "ner" not in nlp.pipe_names
+    assert "tagger" not in nlp.pipe_names
+    # The parser stays, because it finds the sentences used as examples.
+    assert "parser" in nlp.pipe_names

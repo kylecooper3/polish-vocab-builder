@@ -174,6 +174,8 @@ python -m pytest
 
 **Process long books in small pieces, one at a time.** spaCy's memory use grows with text size. Measured on a 780,000-character novel, 20,000-character chunks processed one at a time used 79 MB on top of the model, compared with about 2,600 MB for larger chunks at spaCy's default batch size, at about the same speed. Chunking alone wasn't enough, because spaCy's default batching groups the chunks back together.
 
+**Only run the parts of spaCy the app uses.** spaCy's Polish model has several parts, and the app reads only the lemma, part of speech, grammar tags and sentence breaks. Turning off the two it never reads, name recognition and the fine-grained tagger, made *Lalka* about 30% faster (32.6 to 22.9 seconds) with every word counted the same. Swapping the parser for spaCy's lighter sentence finder would save about 4 more seconds, but it cut dialogue such as "— mruczał radca Węgrowicz." into separate sentences, which made worse examples. The smaller Polish models weren't any faster, only lighter, and they changed about 1% of words, often for the worse.
+
 **Clean up spaCy's output.** spaCy turns `myślałem` ("I thought") into `myśleć być`, because Polish past-tense endings behave like an attached form of "to be". The app keeps only the first word, so these count as `myśleć`. It also gives each lemma one stopword answer, since spaCy's list holds word forms and flags `mam` but not `masz`.
 
 **Check spaCy against Wiktionary, one form at a time.** spaCy reads context but can invent words, turning `krążkiem` into `krążk` or `poszedłem` into `poszedć`. Wiktionary only has real words but can't read context. So once the whole book is read, each form's lemma and part of speech is compared with about 1 million Wiktionary forms:
@@ -196,7 +198,7 @@ This replaced two earlier checks, one for verbs while reading and one for whole 
 
 **Say "not in dictionary", not "invented".** The app can't tell a word an author made up from a rare real word or a spaCy mistake, because all three simply have no entry. So the filter describes what's actually known. Combining it with a minimum count helps, because a word an author coined and keeps using comes up repeatedly.
 
-**Filter in the browser, not on the server.** Analyzing a novel takes about 30 seconds, while filtering takes a fraction of one. The API returns every lemma with its stopword flag, so filters respond straight away without re-analyzing the book.
+**Filter in the browser, not on the server.** Analyzing a novel takes about 23 seconds, while filtering takes a fraction of one. The API returns every lemma with its stopword flag, so filters respond straight away without re-analyzing the book.
 
 **Measure coverage honestly.** Coverage is always a share of every counted word in the book. Hiding stopwords lowers the figure, from 69.7% to 26.5% for the top 500 in *Lalka*, rather than making it look better.
 

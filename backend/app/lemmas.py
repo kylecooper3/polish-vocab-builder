@@ -126,8 +126,9 @@ class Choice(NamedTuple):
 @lru_cache(maxsize=1)
 def load_model():
     """Load the model once and reuse it, since loading takes several seconds."""
-    # Named-entity recognition is the slowest step and we don't use its output.
-    nlp = spacy.load(MODEL_NAME, exclude=["ner"])
+    # We don't use these parts' output. Named-entity recognition is the slowest step, and
+    # dropping the tagger made a novel about 30% faster with every word counted the same.
+    nlp = spacy.load(MODEL_NAME, exclude=["ner", "tagger"])
     nlp.add_pipe("paragraph_boundaries", before="parser")
     return nlp
 
