@@ -19,9 +19,9 @@ It also makes the results useful for planning. In that novel (111,198 counted wo
 | Most frequent lemmas | Share of the book's words |
 |---|---|
 | Top 100 | 48.9% |
-| Top 500 | 69.6% |
-| Top 1,000 | 78.2% |
-| Top 5,000 | 95.3% |
+| Top 500 | 69.7% |
+| Top 1,000 | 78.4% |
+| Top 5,000 | 95.4% |
 
 ## Features
 
@@ -29,7 +29,7 @@ It also makes the results useful for planning. In that novel (111,198 counted wo
 - **Sortable, searchable table** of lemmas with rank, count, part of speech, English translation, forms seen and an example sentence
 - **Search in either language**, by any Polish form or English meaning
 - **Filters** for part of speech, minimum count, stopwords and whether a word is in the dictionary, which can surface words an author invented
-- **Coverage stat**, such as "the top 500 lemmas cover 69.6% of the book"
+- **Coverage stat**, such as "the top 500 lemmas cover 69.7% of the book"
 - **CSV export** for Anki, with the word, translation and example sentence, which also opens correctly in Excel
 - **Per-word export toggle** to leave out single words you don't want on a flashcard
 - **Statistics view** showing how the book's words matched the dictionary, with a searchable list of every merge to check by hand
@@ -119,7 +119,7 @@ python -m pytest
 ```json
 {
   "total_tokens": 3541,
-  "unique_lemmas": 1269,
+  "unique_lemmas": 1263,
   "lemmas": [
     {
       "lemma": "mecenas",
@@ -134,8 +134,8 @@ python -m pytest
     }
   ],
   "match_stats": {
-    "in_dictionary": { "rows": 1135, "occurrences": 3304 },
-    "merged": { "rows": 159, "occurrences": 195 },
+    "in_dictionary": { "rows": 1129, "occurrences": 3300 },
+    "merged": { "rows": 165, "occurrences": 199 },
     "unresolved": { "rows": 0, "occurrences": 0 },
     "no_match": { "rows": 36, "occurrences": 42 }
   },
@@ -184,7 +184,9 @@ python -m pytest
 
 This replaced two earlier checks, one for verbs while reading and one for whole rows at the end. Simply removing the verb check made results worse: on *Lalka*, it added 388 false rows. So did trusting Wiktionary whenever the two disagreed. The final rule took *Lalka* from 10,235 rows to 9,785 and from 1,371 blank rows to 1,260. In a sample of 100 changes judged against their sentences, 76 were better, 20 were debatable and 4 were worse, and most of the known bad cases were then listed as exceptions. That judging wasn't done by a native speaker.
 
-**Keep every Wiktionary lookup in one table.** The app used to load two tables of forms, and only about 4% of the second was ever read. Moving that part into the first and deleting the second gave identical results on *Lalka* and cut peak memory from about 1.6 GB to about 1.3 GB.
+**Keep every Wiktionary lookup in one list.** The app used to load two tables of forms, and only about 4% of the second was ever read. Moving that part into the first gave identical results on *Lalka* and cut peak memory from about 1.6 GB to about 1.3 GB. That part then stayed as a separate fallback list, until a closer look showed it was covering for a gap in the first one.
+
+**Treat related words as words.** Wiktionary defines `dziewczynka` ("girl") and `nauczycielka` ("female teacher") by pointing at another word, so a rule meant for grammatical forms like `szedł` was skipping about 3,450 real words. Female versions and diminutives now count as their own words, which also fixed `biedaczka` and `kuzynek` being filed under the wrong gender. Everything else points straight at its final word, so `lepsze` goes to `dobry` without stopping at `lepszy`, and the fallback is gone. If the next step is a tie, it stops where it is. `większy` and `największy` are the superlatives of both `duży` and `wielki`, so a hand-written rule counts them under `duży`. On *Lalka*, this took the list from 9,750 rows to 9,617 with one fewer blank row. Of 60 sampled changes read against their sentences, one looked worse (`ogródki` in the idiom *bez ogródki*), though that judging wasn't done by a native speaker.
 
 **Count verbal nouns under their verb.** `robienie` ("doing") is technically a noun, but it only names the action, so a learner studies it with `robić`. A word with a meaning of its own stays separate, like `mieszkanie` ("apartment"), and so does any word with two possible verbs, like `tępienie`, or a spelling that belongs to another word. This only applies to words tagged as nouns, because `zawzięcie` can also be an adverb. On *Lalka*, it moved 51 uses, taking the book to 9,750 rows and 1,222 blank rows. Each kind of change was read against its sentence, again not by a native speaker.
 
@@ -196,7 +198,7 @@ This replaced two earlier checks, one for verbs while reading and one for whole 
 
 **Filter in the browser, not on the server.** Analyzing a novel takes about 30 seconds, while filtering takes a fraction of one. The API returns every lemma with its stopword flag, so filters respond straight away without re-analyzing the book.
 
-**Measure coverage honestly.** Coverage is always a share of every counted word in the book. Hiding stopwords lowers the figure, from 69.6% to 26.4% for the top 500 in *Lalka*, rather than making it look better.
+**Measure coverage honestly.** Coverage is always a share of every counted word in the book. Hiding stopwords lowers the figure, from 69.7% to 26.5% for the top 500 in *Lalka*, rather than making it look better.
 
 **Draw 200 table rows at a time.** A novel can produce about 10,000 lemmas. Drawing them all made filter changes about 3.5 times slower, so the table draws 200 and offers "Show more", while search, filters and export still use the full list.
 

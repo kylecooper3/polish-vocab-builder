@@ -30,7 +30,7 @@ EXCLUDED_POS = {"PROPN", "PUNCT", "SYM", "X", "SPACE"}
 
 # Lemmas counted as another word. spaCy treats "wybory" as its own word, but it's also
 # the plural of "wybór" ("choice"). Merging means its "elections" meaning isn't listed.
-LEMMA_MERGES = {"wybory": "wybór", "zdrów": "zdrowy"}
+LEMMA_MERGES = {"wybory": "wybór", "zdrów": "zdrowy", "większy": "duży", "największy": "duży"}
 
 # Spellings where the dictionary's answer is known to be wrong, so spaCy's lemma stays.
 # "bylem" comes from "byle" ("if only"), not "byl" ("flower stalk"). "zdrów" means "healthy",
@@ -230,8 +230,7 @@ def choose_lemma(
             return Choice(next(iter(matching)), "merged")
         return Choice(lemma, "in_dictionary")
 
-    # The fallback covers entries that are only forms themselves, like "najwyższy".
-    candidates = matching or every or set(options.fallback.get(form, []))
+    candidates = matching or every
     if not candidates:
         return Choice(lemma, "no_match")
     tied = len(candidates) > 1
@@ -268,7 +267,11 @@ def resolve_lemmas(
             else choose_lemma(form, lemma, pos, options, rows_in_book)
         )
         target = LEMMA_MERGES.get(choice.lemma, choice.lemma)
-        uses_by_group[lemma][choice.group] += tally.count
+        # Judged by where the word ended up, because a hand merge can undo or add a move.
+        group = "merged" if target != lemma else choice.group
+        if target == lemma and group == "merged":
+            group = "in_dictionary"
+        uses_by_group[lemma][group] += tally.count
         _merge_tally(rows.setdefault(target, _Tally()), tally)
         if target != lemma:
             _merge_tally(moved.setdefault((lemma, target), _Tally()), tally)

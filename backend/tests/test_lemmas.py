@@ -267,10 +267,8 @@ def test_a_repeated_sentence_does_not_add_more_marks(nlp):
     assert entry.example_spans == [(4, 8)]
 
 
-def _options(real_words=(), fallback=None, verbal_nouns=None, **forms):
-    return LemmaOptions(
-        real_words=set(real_words), options=forms, fallback=fallback or {}, verbal_nouns=verbal_nouns or {}
-    )
+def _options(real_words=(), verbal_nouns=None, **forms):
+    return LemmaOptions(real_words=set(real_words), options=forms, verbal_nouns=verbal_nouns or {})
 
 
 def _chosen(form, lemma, pos, options, rows=()):
@@ -335,10 +333,15 @@ def test_a_tie_with_no_clear_answer_stays_unresolved():
         assert (choice.lemma, choice.group) == ("robocie", "unresolved")
 
 
-def test_the_fallback_is_used_when_options_has_nothing():
-    options = _options(fallback={"największej": ["największy"]})
-    choice = _chosen("największej", "największej", "ADJ", options)
-    assert (choice.lemma, choice.group) == ("największy", "merged")
+def test_a_leftover_replaces_a_made_up_lemma():
+    options = _options(chciwszych="any=chciwy")
+    choice = _chosen("chciwszych", "chciwszych", "ADJ", options)
+    assert (choice.lemma, choice.group) == ("chciwy", "merged")
+
+
+def test_a_leftover_does_not_replace_a_real_word():
+    options = _options({"zapisać"}, zapisanym="any=zapisany")
+    assert _chosen("zapisanym", "zapisać", "ADJ", options).lemma == "zapisać"
 
 
 def test_a_word_found_nowhere_stays_as_it_is():
@@ -510,8 +513,8 @@ def test_real_sentences_get_the_right_word(nlp, sentence, form, lemma):
     assert entry is not None and form in entry.forms
 
 
-def test_a_lemma_confirmed_by_the_fallback_is_not_counted_as_merged():
-    choice = _chosen("kąciku", "kącik", "NOUN", _options(fallback={"kąciku": ["kącik"]}))
+def test_a_lemma_confirmed_by_a_leftover_is_not_counted_as_merged():
+    choice = _chosen("kąciku", "kącik", "NOUN", _options(kąciku="any=kącik"))
     assert (choice.lemma, choice.group) == ("kącik", "in_dictionary")
 
 
@@ -572,3 +575,21 @@ def test_exceptions_still_win_over_the_verbal_noun_rule():
 def test_verbal_nouns_in_real_sentences(nlp, sentence, form, lemma):
     entry = _entry(analyze_text(sentence, nlp), lemma)
     assert entry is not None and form in entry.forms
+
+
+@pytest.mark.parametrize(
+    ("sentence", "form"),
+    [("To jest większy dom.", "większy"), ("To był największy dom.", "największy")],
+)
+def test_bigger_and_biggest_count_under_big(nlp, sentence, form):
+    entry = _entry(analyze_text(sentence, nlp), "duży")
+    assert entry is not None and form in entry.forms
+
+
+def test_a_word_that_ends_where_it_started_is_not_counted_as_merged():
+    # spaCy already said "duży", so the hand rule leaves nothing to move.
+    options = _options({"duży"}, większe="adj=większy")
+    readings = _readings(("duży", "większe", "ADJ", False, _reading(1)))
+    rows, merges, stats = resolve_lemmas(readings, options)
+    assert merges == []
+    assert (stats.merged.occurrences, stats.in_dictionary.occurrences) == (0, 1)

@@ -14,7 +14,8 @@ from scripts.build_translations import (
     KEPT_POS,
     build_table,
     build_lemma_options,
-    build_fallback,
+    fold_leftovers,
+    shorten_chains,
     build_word_forms,
     clean_meaning,
 )
@@ -329,19 +330,33 @@ def test_word_forms_skip_words_without_a_translation():
     assert build_word_forms(records, {"pies"}) == {}
 
 
-def test_fallback_only_keeps_single_words_the_options_lack():
-    word_forms = {
-        "największej": ["największy"],
-        "krążkiem": ["krążek"],
-        "czarny rynek": ["czarny rynek"],
-    }
-    assert build_fallback(word_forms, {"krążkiem": "noun=krążek"}) == {"największej": ["największy"]}
+def test_leftovers_only_cover_single_words_the_options_lack():
+    word_forms = {"chciwszych": ["chciwszy"], "krążkiem": ["krążek"], "czarny rynek": ["czarny rynek"]}
+    options = {"krążkiem": "noun=krążek", "chciwszy": "adj=chciwy"}
+    assert fold_leftovers(word_forms, set(), options) == {"chciwszych": "any=chciwy"}
 
 
-def test_real_fallback_has_the_words_the_options_miss():
-    options = load_lemma_options()
-    assert options.fallback["największej"] == ["największy"]
-    assert not set(options.fallback) & set(options.options)
+def test_a_leftover_goes_straight_to_the_final_word():
+    folded = fold_leftovers({"lepsze": ["lepszy"]}, {"dobry"}, {"lepszy": "adj=dobry"})
+    assert folded == {"lepsze": "any=dobry"}
+
+
+def test_a_leftover_stops_when_the_next_step_is_a_tie():
+    folded = fold_leftovers({"patrzących": ["patrzący"]}, set(), {"patrzący": "verb=patrzeć,patrzyć"})
+    assert folded == {"patrzących": "any=patrzący"}
+
+
+def test_a_leftover_pointing_to_a_real_word_stops_there():
+    folded = fold_leftovers({"znanym": ["znany"]}, {"znany"}, {"znany": "adj=znany;verb=znać"})
+    assert folded == {"znanym": "any=znany"}
+
+
+def test_a_leftover_with_nothing_further_keeps_its_word():
+    assert fold_leftovers({"rzadkiego": ["rzadki"]}, set(), {}) == {"rzadkiego": "any=rzadki"}
+
+
+def test_a_leftover_pointing_only_to_a_phrase_is_dropped():
+    assert fold_leftovers({"naj": ["mądry jak gacie"]}, set(), {}) == {}
 
 
 def _sense_of(gloss, target=None, tags=()):
@@ -387,8 +402,6 @@ def test_an_entry_with_a_real_meaning_too_counts_as_a_real_word():
 @pytest.mark.parametrize(
     "sense",
     [
-        _sense_of("female equivalent of pan", "pan", ["feminine", "form-of"]),
-        _sense_of("diminutive of pies", "pies", ["diminutive", "singular"]),
         _sense_of("alternative spelling of z", "z", ["alternative", "singular"]),
         _sense_of("verbal noun of robić", "robić", ["noun-from-verb"]),
     ],
@@ -400,7 +413,7 @@ def test_links_that_are_not_inflections_are_ignored(sense):
 
 def test_equivalent_links_are_ignored_even_with_grammar_tags():
     sense = _sense_of("female equivalent of pan", "pan", ["singular"])
-    assert build_lemma_options([_entry_record("pani", "noun", [sense])])["options"] == {}
+    assert build_lemma_options([_entry_record("pani", "noun", [sense])])["options"] == {"pani": "noun=pani"}
 
 
 def test_related_words_in_a_table_are_not_options():
@@ -419,7 +432,7 @@ def test_multi_word_links_and_names_are_left_out():
 
 
 def test_for_form_separates_the_tag_from_every_option():
-    options = LemmaOptions(real_words=set(), options={"rozumie": "noun=rozum;verb=rozumieć"}, fallback={}, verbal_nouns={})
+    options = LemmaOptions(real_words=set(), options={"rozumie": "noun=rozum;verb=rozumieć"}, verbal_nouns={})
     assert options.for_form("rozumie", "VERB") == ({"rozumieć"}, {"rozum", "rozumieć"})
     assert options.for_form("rozumie", "ADP") == (set(), {"rozum", "rozumieć"})
     assert options.for_form("xyz", "NOUN") == (set(), set())
@@ -511,3 +524,81 @@ def test_real_verbal_nouns_follow_the_rule():
     assert options.verbal_nouns["pukania"] == "pukać"
     for word in ("mieszkanie", "życie", "zdanie", "spotkanie", "przyjęcie", "jedzenie", "była", "stara", "tępienie"):
         assert word not in options.verbal_nouns
+
+
+def test_a_female_version_is_its_own_word():
+    sense = _sense_of("female equivalent of sanitariusz", "sanitariusz", ["feminine", "form-of"])
+    data = build_lemma_options([_entry_record("sanitariuszka", "noun", [sense], ("sanitariuszkom", ["dative", "plural"]))])
+    assert data["real_words"] == ["sanitariuszka"]
+    assert data["options"]["sanitariuszkom"] == "noun=sanitariuszka"
+
+
+def test_a_diminutive_is_its_own_word():
+    sense = _sense_of("diminutive of kolacja", "kolacja", ["diminutive", "form-of"])
+    data = build_lemma_options([_entry_record("kolacyjka", "noun", [sense], ("kolacyjki", ["genitive", "singular"]))])
+    assert data["real_words"] == ["kolacyjka"]
+    assert data["options"]["kolacyjki"] == "noun=kolacyjka"
+
+
+def test_a_female_version_does_not_point_to_the_male_word():
+    sense = _sense_of("female equivalent of pan", "pan", ["feminine", "form-of"])
+    assert build_lemma_options([_entry_record("pani", "noun", [sense])])["options"]["pani"] == "noun=pani"
+
+
+def test_a_grammatical_form_is_still_not_its_own_word():
+    sense = _sense_of("masculine past of iść", "iść", ["form-of", "past"])
+    data = build_lemma_options([_entry_record("szedł", "verb", [sense])])
+    assert data["real_words"] == []
+    assert data["options"]["szedł"] == "verb=iść"
+
+
+def test_a_misspelling_is_still_not_its_own_word():
+    sense = _sense_of("misspelling of mebel", "mebel", ["form-of", "misspelling"])
+    assert build_lemma_options([_entry_record("mebl", "noun", [sense])])["real_words"] == []
+
+
+def test_real_data_counts_everyday_related_words():
+    options = load_lemma_options()
+    for word in ("dziewczynka", "nauczycielka", "aktorka", "sanitariuszka", "kolacyjka"):
+        assert word in options.real_words
+    assert options.for_form("sanitariuszkom", "NOUN")[0] == {"sanitariuszka"}
+
+
+def test_real_data_folds_leftovers_into_one_list():
+    options = load_lemma_options()
+    assert options.for_form("chciwszych", "ADJ") == (set(), {"chciwy"})
+    assert options.for_form("największej", "ADJ") == (set(), {"największy"})
+    assert options.for_form("patrzących", "ADJ")[1] == {"patrzący"}
+    assert "szedł" not in options.real_words
+    assert "największy" not in options.real_words
+
+
+def test_a_chain_goes_straight_to_the_final_word():
+    options = {"lepsze": "adj=lepszy", "lepszy": "adj=dobry", "dobry": "adj=dobry"}
+    assert shorten_chains(options, {"dobry"})["lepsze"] == "adj=dobry"
+
+
+def test_a_chain_stops_at_a_tie():
+    options = {"większe": "adj=większy", "większy": "adj=duży,wielki"}
+    assert shorten_chains(options, set())["większe"] == "adj=większy"
+
+
+def test_a_chain_stops_at_a_real_word():
+    options = {"znane": "adj=znany", "znany": "adj=znany;verb=znać"}
+    assert shorten_chains(options, {"znany"})["znane"] == "adj=znany"
+
+
+def test_a_chain_keeps_the_part_of_speech_it_came_from():
+    options = {"mające": "adj=mający", "mający": "verb=mieć"}
+    assert shorten_chains(options, set())["mające"] == "adj=mieć"
+
+
+def test_a_chain_keeps_the_other_words_a_spelling_could_be():
+    options = {"lepsze": "adj=lepszy;noun=lepsza", "lepszy": "adj=dobry"}
+    assert shorten_chains(options, {"lepsza"})["lepsze"] == "adj=dobry;noun=lepsza"
+
+
+def test_real_data_collapses_comparatives():
+    options = load_lemma_options()
+    assert "dobry" in options.for_form("lepsze", "ADJ")[0]
+    assert "lepszy" not in options.for_form("lepsze", "ADJ")[0]

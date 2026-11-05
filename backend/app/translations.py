@@ -40,7 +40,6 @@ class LemmaOptions:
 
     real_words: set[str]
     options: dict[str, str]  # {"rozumie": "noun=rozum;verb=rozumieć"}
-    fallback: dict[str, list[str]]  # {"największej": ["największy"]}, when options has nothing
     verbal_nouns: dict[str, str]  # {"robienia": "robić"}, for nouns with no meaning of their own
 
     def for_form(self, form: str, spacy_pos: str) -> tuple[set[str], set[str]]:
@@ -73,7 +72,6 @@ def load_lemma_options() -> LemmaOptions:
     return LemmaOptions(
         real_words={*data["real_words"], *overrides},
         options=data["options"],
-        fallback=data["fallback"],
         verbal_nouns=data["verbal_nouns"],
     )
 

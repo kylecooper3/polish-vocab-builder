@@ -41,6 +41,10 @@ RELATED_WORD_TAGS = {
     "diminutive", "augmentative", "abbreviation", "alternative", "misspelling", "noun-from-verb",
 }
 
+# Wiktionary defines "dziewczynka" and "nauczycielka" by pointing at another word, but they
+# name something of their own, so they count as real words.
+OWN_WORD_TAGS = {"diminutive", "augmentative"}
+
 # Names, letters, prefixes and so on aren't vocabulary a learner looks up here.
 KEPT_POS = {"noun", "verb", "adj", "adv", "prep", "conj", "pron", "det", "num", "particle", "intj"}
 
@@ -248,7 +252,8 @@ def is_inflection_link(sense: dict) -> bool:
 def build_lemma_options(records) -> dict:
     """List the real dictionary words, and the words each spelling could belong to.
 
-    An entry that is only a form of another word, like "szedł", isn't a real word here.
+    An entry that is only a form of another word, like "szedł", isn't a real word here. A
+    female version or diminutive is, because it names something of its own.
     Options are grouped by part of speech and stored as text, like "noun=rozum;verb=rozumieć",
     because a million small dictionaries would take far more memory.
     """
@@ -266,7 +271,7 @@ def build_lemma_options(records) -> dict:
                 verbal_noun_records.append(record)
             else:
                 other_nouns.add(word)
-        if senses and not all(sense.get("form_of") for sense in senses):
+        if any(_names_its_own_word(sense) for sense in senses):
             real_words.add(word)
             options[word][pos].add(word)
             for entry in record.get("forms", []):
@@ -292,6 +297,13 @@ def build_lemma_options(records) -> dict:
         "options": {form: value for form, value in encoded.items() if value},
         "verbal_nouns": _verbal_nouns(verbal_noun_records, other_nouns, options),
     }
+
+
+def _names_its_own_word(sense: dict) -> bool:
+    if not sense.get("form_of"):
+        return True
+    gloss = (sense.get("glosses") or [""])[-1]
+    return bool(set(sense.get("tags", [])) & OWN_WORD_TAGS) or "equivalent" in gloss
 
 
 def _is_verbal_noun_sense(sense: dict) -> bool:
@@ -326,14 +338,57 @@ def _verbal_nouns(records: list[dict], other_nouns: set[str], options: dict) -> 
     return {form: next(iter(found)) for form, found in claims.items() if len(found) == 1}
 
 
-def build_fallback(word_forms: dict[str, list[str]], options: dict[str, str]) -> dict[str, list[str]]:
-    """Keep the single-word spellings the options don't cover, like "największej".
+def _words_after(word: str, real_words: set[str], options: dict[str, str]) -> set[str]:
+    """The words an entry points to next, or nothing if it's a real word itself."""
+    if word in real_words:
+        return set()
+    following = set()
+    for group in options.get(word, "").split(";"):
+        following.update(group.partition("=")[2].split(","))
+    return following - {word, ""}
 
-    The app only looks here when a spelling has no options, so anything else is never read.
+
+def shorten_chains(options: dict[str, str], real_words: set[str]) -> dict[str, str]:
+    """Point spellings straight at the final word: "lepsze" to "dobry", not "lepszy".
+
+    On a tie, like "większy" (from "duży" or "wielki"), it stops at the entry it reached.
     """
-    return {
-        form: words for form, words in word_forms.items() if form not in options and " " not in form
-    }
+    shortened = {}
+    for form, encoded in options.items():
+        groups = []
+        for group in encoded.split(";"):
+            pos, _, words = group.partition("=")
+            final = set()
+            for word in words.split(","):
+                following = _words_after(word, real_words, options)
+                final |= following if len(following) == 1 else {word}
+            groups.append(f"{pos}={','.join(sorted(final))}")
+        shortened[form] = ";".join(groups)
+    return shortened
+
+
+def fold_leftovers(
+    word_forms: dict[str, list[str]], real_words: set[str], options: dict[str, str]
+) -> dict[str, str]:
+    """Add the spellings the options miss, each pointing straight to its final word.
+
+    These are mostly forms of comparatives and participles, whose own entries point to
+    another word: "lepsze" goes through "lepszy" to "dobry". On a tie, like "największy"
+    (from "duży" or "wielki"), it stops at the entry it reached. They're stored under "any",
+    which matches no part of speech, so they only replace a lemma that isn't a real word.
+    """
+    folded = {}
+    for form, words in word_forms.items():
+        if form in options or " " in form:
+            continue
+        final = set()
+        for word in words:
+            following = _words_after(word, real_words, options)
+            final |= following if len(following) == 1 else {word}
+        final = sorted(word for word in final if not re.search(r"[ ,;=]", word))
+        if final:
+            folded[form] = f"any={','.join(final)}"
+    return folded
 
 
 def write_compressed_json(path: Path, data: dict) -> None:
@@ -350,11 +405,13 @@ def main(source: str) -> None:
         word_forms = build_word_forms((json.loads(line) for line in handle), set(table))
     with open(source, encoding="utf-8") as handle:
         lemma_options = build_lemma_options(json.loads(line) for line in handle)
-    lemma_options["fallback"] = build_fallback(word_forms, lemma_options["options"])
+    real_words = set(lemma_options["real_words"])
+    folded = fold_leftovers(word_forms, real_words, lemma_options["options"])
+    lemma_options["options"] = {**shorten_chains(lemma_options["options"], real_words), **folded}
     write_compressed_json(LEMMA_OPTIONS_FILE, lemma_options)
     print(
         f"{len(lemma_options['real_words']):,} real words, {len(lemma_options['options']):,} spellings, "
-        f"{len(lemma_options['fallback']):,} fallback spellings, "
+        f"{len(folded):,} of them leftovers, "
         f"{len(lemma_options['verbal_nouns']):,} verbal noun forms, "
         f"{LEMMA_OPTIONS_FILE.stat().st_size / 1e6:.1f} MB"
     )
