@@ -51,7 +51,6 @@ def test_match_stats_add_up_to_the_whole_book(nlp):
     groups = [stats.in_dictionary, stats.merged, stats.unresolved, stats.no_match]
 
     assert sum(group.occurrences for group in groups) == result.total_tokens
-    assert stats.merged.rows == len(result.merges)
     assert stats.merged.occurrences == sum(merge.count for merge in result.merges)
 
 

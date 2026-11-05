@@ -66,7 +66,7 @@ function MergeReview({ merges, lemmas }) {
               </thead>
               <tbody>
                 {rows.slice(0, visibleCount).map((merge) => (
-                  <tr key={merge.from_lemma}>
+                  <tr key={`${merge.from_lemma}>${merge.to_lemma}`}>
                     <td lang="pl">{merge.from_lemma}</td>
                     <td lang="pl" className="lemma">{merge.to_lemma}</td>
                     <td className="translation">{translations.get(merge.to_lemma) || '—'}</td>

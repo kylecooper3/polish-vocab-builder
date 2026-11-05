@@ -80,7 +80,7 @@ export function matchGroups(stats) {
     {
       key: 'merged',
       label: 'Merged',
-      description: "spaCy's lemma wasn't found, but the form in the book pointed to one word.",
+      description: "spaCy's lemma was replaced, because the form in the book pointed to another word.",
     },
     {
       key: 'unresolved',

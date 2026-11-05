@@ -1,17 +1,20 @@
 import json
 
+import pytest
+
 from app.translations import (
     OVERRIDES_FILE,
     apply_overrides,
     load_translations,
-    load_verb_forms,
+    LemmaOptions,
+    load_lemma_options,
     load_word_forms,
     translate,
 )
 from scripts.build_translations import (
     KEPT_POS,
     build_table,
-    build_verb_forms,
+    build_lemma_options,
     build_word_forms,
     clean_meaning,
 )
@@ -210,43 +213,6 @@ def test_override_can_add_a_missing_word():
     assert apply_overrides({}, {"i": {"conj": "and"}}) == {"i": {"conj": "and"}}
 
 
-def _verb(word, *forms):
-    return {"word": word, "pos": "verb", "forms": [{"form": f, "tags": t} for f, t in forms]}
-
-
-def test_verb_forms_map_to_their_dictionary_word():
-    table = build_verb_forms([_verb("pójść", ("poszedłem", ["past", "singular"]))])
-    assert table == {"poszedłem": "pójść"}
-
-
-def test_verb_forms_skip_a_verbs_partner_and_template_notes():
-    table = build_verb_forms([
-        _verb("pójść", ("iść", ["imperfective"]), ("l", ["inflection-template"]), ("pójdę", ["future"])),
-    ])
-    assert table == {"pójdę": "pójść"}
-
-
-def test_verb_forms_leave_out_a_form_shared_by_two_verbs():
-    table = build_verb_forms([_verb("stać", ("stanę", ["future"])), _verb("stanąć", ("stanę", ["future"]))])
-    assert table == {}
-
-
-def test_verb_forms_ignore_other_parts_of_speech_and_phrases():
-    records = [
-        {"word": "pies", "pos": "noun", "forms": [{"form": "psa", "tags": ["genitive"]}]},
-        _verb("pójść", ("pójdzie się", ["impersonal"])),
-    ]
-    assert build_verb_forms(records) == {}
-
-
-def test_real_verb_form_data_has_the_irregular_forms():
-    forms = load_verb_forms()
-    assert forms["poszedłem"] == "pójść"
-    assert forms["rzekłem"] == "rzec"
-    assert forms["jadłem"] == "jeść"
-    assert forms["mogłem"] == "móc"
-
-
 def test_every_override_uses_a_real_part_of_speech_and_says_something():
     # A typo here would do nothing, without any error, so the fix would silently not apply.
     overrides = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
@@ -365,3 +331,93 @@ def test_word_forms_skip_words_without_a_translation():
 
 def test_word_form_table_finds_a_real_noun():
     assert load_word_forms()["krążkiem"] == ["krążek"]
+
+
+def _sense_of(gloss, target=None, tags=()):
+    sense = {"glosses": [gloss], "tags": list(tags)}
+    if target:
+        sense["form_of"] = [{"word": target}]
+    return sense
+
+
+def _entry_record(word, pos, senses, *forms):
+    return {
+        "word": word, "pos": pos, "senses": senses,
+        "forms": [{"form": form, "tags": tags} for form, tags in forms],
+    }
+
+
+def test_lemma_options_group_forms_by_part_of_speech():
+    data = build_lemma_options([
+        _entry_record("rozum", "noun", [_sense_of("mind")], ("rozumie", ["locative", "singular"])),
+        _entry_record("rozumieć", "verb", [_sense_of("to understand")], ("rozumie", ["third-person", "singular"])),
+    ])
+    assert data["options"]["rozumie"] == "noun=rozum;verb=rozumieć"
+    assert data["real_words"] == ["rozum", "rozumieć"]
+
+
+def test_an_entry_that_is_only_a_form_is_not_a_real_word():
+    data = build_lemma_options([
+        _entry_record("szedł", "verb", [_sense_of("past of iść", "iść", ["past", "singular"])]),
+    ])
+    assert data["real_words"] == []
+    assert data["options"]["szedł"] == "verb=iść"
+
+
+def test_an_entry_with_a_real_meaning_too_counts_as_a_real_word():
+    data = build_lemma_options([
+        _entry_record("stały", "adj", [_sense_of("constant")]),
+        _entry_record("stały", "verb", [_sense_of("past of stać", "stać", ["past", "plural"])]),
+    ])
+    assert "stały" in data["real_words"]
+    assert data["options"]["stały"] == "adj=stały;verb=stać"
+
+
+@pytest.mark.parametrize(
+    "sense",
+    [
+        _sense_of("female equivalent of pan", "pan", ["feminine", "form-of"]),
+        _sense_of("diminutive of pies", "pies", ["diminutive", "singular"]),
+        _sense_of("alternative spelling of z", "z", ["alternative", "singular"]),
+        _sense_of("verbal noun of robić", "robić", ["noun-from-verb"]),
+    ],
+)
+def test_links_that_are_not_inflections_are_ignored(sense):
+    data = build_lemma_options([_entry_record("slowo", "noun", [sense])])
+    assert "slowo" not in data["options"]
+
+
+def test_equivalent_links_are_ignored_even_with_grammar_tags():
+    sense = _sense_of("female equivalent of pan", "pan", ["singular"])
+    assert build_lemma_options([_entry_record("pani", "noun", [sense])])["options"] == {}
+
+
+def test_related_words_in_a_table_are_not_options():
+    data = build_lemma_options([
+        _entry_record("pies", "noun", [_sense_of("dog")], ("piesek", ["diminutive"]), ("psem", ["instrumental", "singular"])),
+    ])
+    assert set(data["options"]) == {"pies", "psem"}
+
+
+def test_multi_word_links_and_names_are_left_out():
+    data = build_lemma_options([
+        _entry_record("chłopi", "noun", [_sense_of("plural of x", "chłop pańszczyźniany", ["plural"])]),
+        _entry_record("Warszawa", "name", [_sense_of("Warsaw")]),
+    ])
+    assert data == {"real_words": [], "options": {}}
+
+
+def test_for_form_separates_the_tag_from_every_option():
+    options = LemmaOptions(real_words=set(), options={"rozumie": "noun=rozum;verb=rozumieć"})
+    assert options.for_form("rozumie", "VERB") == ({"rozumieć"}, {"rozum", "rozumieć"})
+    assert options.for_form("rozumie", "ADP") == (set(), {"rozum", "rozumieć"})
+    assert options.for_form("xyz", "NOUN") == (set(), set())
+
+
+def test_real_lemma_options_handle_the_words_we_tested():
+    options = load_lemma_options()
+    assert options.for_form("jedziemy", "VERB")[0] == {"jechać"}
+    assert options.for_form("meble", "NOUN")[0] == {"mebel"}
+    assert "mógłbym" not in options.real_words
+    assert {"mebel", "rozumieć", "pani", "rocznie"} <= options.real_words
+    assert "pan" not in options.for_form("pani", "NOUN")[0]

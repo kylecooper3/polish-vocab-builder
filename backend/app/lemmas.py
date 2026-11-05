@@ -1,15 +1,21 @@
 """Stage 3: run spaCy over clean text and build the ranked list of lemmas."""
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, NamedTuple
 
 import spacy
 from pydantic import BaseModel, Field
 from spacy.language import Language
 
-from app.translations import load_translations, load_verb_forms, load_word_forms, translate
+from app.translations import (
+    LemmaOptions,
+    load_lemma_options,
+    load_translations,
+    load_word_forms,
+    translate,
+)
 
 MODEL_NAME = "pl_core_news_lg"
 
@@ -27,15 +33,11 @@ EXCLUDED_POS = {"PROPN", "PUNCT", "SYM", "X", "SPACE"}
 # the plural of "wybór" ("choice"). Merging means its "elections" meaning isn't listed.
 LEMMA_MERGES = {"wybory": "wybór", "zdrów": "zdrowy"}
 
-VERB_POS = {"VERB", "AUX"}
-
-# Words spaCy can wrongly tag as verbs that also match a form in the verb tables, such
-# as "zdrów" ("healthy"), which would otherwise become "zdrowić" ("to heal").
-NOT_VERB_FORMS = {"zdrów", "dziw"}
-
-# Words that happen to match a form of an unrelated word, such as "bylem", which looks
-# like a form of "byl" ("flower stalk") but comes from "byle" ("if only").
-NOT_WORD_FORMS = {"bylem"}
+# Spellings where the dictionary's answer is known to be wrong, so spaCy's lemma stays.
+# "bylem" comes from "byle" ("if only"), not "byl" ("flower stalk"). "zdrów" means "healthy",
+# not "zdrowić" ("to heal"). "laty" belongs to "rok" ("year"), as in "przed laty" ("years
+# ago"). "lewo" is "left", as in "w lewo", and "kuzynka" is a female cousin, not "kuzynek".
+NOT_WORD_FORMS = {"bylem", "zdrów", "dziw", "laty", "lewo", "kuzynka"}
 
 # The forms of "ono" ("it") that aren't also spelled the same as a form of "on" ("he").
 NEUTER_ONLY_FORMS = {"ono", "je"}
@@ -75,13 +77,13 @@ class MatchGroup(BaseModel):
     rows: int = 0
     occurrences: int = 0
 
-    def add(self, tally: "_Tally") -> None:
-        self.rows += 1
-        self.occurrences += tally.count
-
 
 class MatchStats(BaseModel):
-    """How spaCy's rows matched the dictionary. Every row falls into exactly one group."""
+    """How spaCy's rows matched the dictionary.
+
+    Every use of a word is counted in the group its own form landed in. One spaCy row can
+    have forms in different groups, so each row is counted once, under its biggest group.
+    """
 
     in_dictionary: MatchGroup = Field(default_factory=MatchGroup)
     merged: MatchGroup = Field(default_factory=MatchGroup)
@@ -109,6 +111,12 @@ class _Tally:
     example_is_good: bool = False
     example_spans: list = field(default_factory=list)
     example_sentence: int = -1  # which sentence of the book the example came from
+
+
+class Choice(NamedTuple):
+    lemma: str
+    group: str  # a field of MatchStats
+    method: str = "only_match"
 
 
 @lru_cache(maxsize=1)
@@ -146,19 +154,6 @@ def split_into_chunks(text: str, max_chars: int = CHUNK_SIZE) -> list[str]:
     if start < len(text):
         chunks.append(text[start:])
     return chunks
-
-
-def fix_verb_lemma(form: str, lemma: str, pos: str, verb_forms: dict, translations: dict) -> str:
-    """Replace a verb lemma that looks wrong with the dictionary word for its form.
-
-    spaCy sometimes guesses a stem that doesn't exist ("poszedłem" gives "poszedć"), or
-    just returns the word unchanged ("mógłbym"). Any other verb keeps spaCy's answer.
-    """
-    if pos not in VERB_POS or form in NOT_VERB_FORMS:
-        return lemma
-    if lemma in translations and lemma != form:
-        return lemma
-    return verb_forms.get(form, lemma)
 
 
 def _word_starts(sentence, sentence_text: str) -> dict[int, int]:
@@ -200,77 +195,97 @@ def split_pronoun(lemma: str, pos: str, morph, form: str) -> str:
     return "on"
 
 
-def find_correct_lemma(tally: _Tally, word_forms: dict, rows_in_book: set[str]) -> str | None:
-    """Work out which dictionary word a row belongs to from the forms the book used.
+def choose_lemma(
+    form: str, lemma: str, pos: str, options: LemmaOptions, word_forms: dict, rows_in_book: set[str]
+) -> Choice:
+    """Compare spaCy's lemma and part of speech with Wiktionary, and decide which to trust.
 
-    spaCy can invent a stem ("krążkiem" gives "krążk"), but the form itself is reliable.
-    Returns None rather than guess, because a blank row is better than a wrong merge.
+    spaCy reads context but can invent words. Wiktionary only has real words but can't read
+    context. So agreement keeps the lemma, and a made-up lemma takes Wiktionary's answer.
+    A real word is only replaced when the form can't belong to it and one other word fits.
+    Anything unclear stays as it is, because a blank row is better than a wrong one.
     """
-    targets = set()
-    for form in tally.forms:
-        candidates = _candidates(form, word_forms)
-        if len(candidates) > 1:
-            # "meble" could be "mebel" or "meble", so prefer one this book already uses.
-            candidates = [word for word in candidates if word in rows_in_book]
-        if len(candidates) != 1:
-            return None
-        targets.add(candidates[0])
-    return targets.pop() if len(targets) == 1 else None
+    in_dictionary = lemma in options.real_words
+    if form in NOT_WORD_FORMS:
+        return Choice(lemma, "in_dictionary" if in_dictionary else "no_match")
+
+    matching, every = options.for_form(form, pos)
+    if lemma in matching:
+        return Choice(lemma, "in_dictionary")
+
+    if in_dictionary:
+        if len(matching) == 1 and form not in matching:
+            return Choice(next(iter(matching)), "merged")
+        return Choice(lemma, "in_dictionary")
+
+    # The form table also covers entries that are only forms themselves, like "najwyższy".
+    candidates = matching or every or set(word_forms.get(form, []))
+    if not candidates:
+        return Choice(lemma, "no_match")
+    tied = len(candidates) > 1
+    if tied:
+        # "robocie" could be "robot" or "robota", so prefer one this book already uses.
+        candidates = candidates & rows_in_book
+    if candidates == {lemma}:
+        return Choice(lemma, "in_dictionary")  # confirmed, so nothing moved
+    if len(candidates) == 1:
+        return Choice(next(iter(candidates)), "merged", "tie_break" if tied else "only_match")
+    return Choice(lemma, "unresolved")
 
 
-def _candidates(form: str, word_forms: dict) -> list[str]:
-    return [] if form in NOT_WORD_FORMS else word_forms.get(form, [])
+def resolve_lemmas(
+    readings: dict[tuple, _Tally], options: LemmaOptions, word_forms: dict
+) -> tuple[dict[str, _Tally], list[LemmaMerge], MatchStats]:
+    """Turn what was read into the final rows, deciding each form separately.
 
-
-def correct_unknown_lemmas(
-    tallies: dict[str, _Tally], word_forms: dict, translations: dict
-) -> tuple[list[LemmaMerge], MatchStats]:
-    """Merge rows whose lemma isn't in the dictionary into the word they belong to.
-
-    A row with no match stays as it is. That may be a word the dictionary doesn't have,
-    such as one an author invented, and it still deserves a place in the list.
-
-    Returns a record of every merge and how all the rows matched, written as each
-    decision is made, so people can check what the app actually did.
+    It runs once the whole book is read, because the tie-break needs to know which words
+    the book contains. Each reading is one combination of spaCy's lemma, the form and its
+    part of speech. Returns a record of every merge and how everything matched, written as
+    each decision is made, so people can check what the app actually did.
     """
-    merges = []
+    rows_in_book = {key[0] for key in readings if key[0] in options.real_words}
+    rows: dict[str, _Tally] = {}
+    moved: dict[tuple[str, str], _Tally] = {}
+    methods: dict[tuple[str, str], str] = {}
+    uses_by_group = defaultdict(Counter)
+
+    for (lemma, form, pos, settled), tally in readings.items():
+        choice = (
+            Choice(lemma, "in_dictionary")
+            if settled
+            else choose_lemma(form, lemma, pos, options, word_forms, rows_in_book)
+        )
+        target = LEMMA_MERGES.get(choice.lemma, choice.lemma)
+        uses_by_group[lemma][choice.group] += tally.count
+        _merge_tally(rows.setdefault(target, _Tally()), tally)
+        if target != lemma:
+            _merge_tally(moved.setdefault((lemma, target), _Tally()), tally)
+            if methods.get((lemma, target)) != "tie_break":
+                methods[(lemma, target)] = choice.method
+
     stats = MatchStats()
-    # Decided up front, so the answer doesn't depend on which rows are fixed first.
-    rows_in_book = {lemma for lemma in tallies if lemma in translations}
-    # Counted before any merging, or a row would also include the merges it receives.
-    for lemma in rows_in_book:
-        stats.in_dictionary.add(tallies[lemma])
-    for lemma in [lemma for lemma in tallies if lemma not in rows_in_book]:
-        tally = tallies[lemma]
-        target = find_correct_lemma(tally, word_forms, rows_in_book)
-        if target:
-            target = LEMMA_MERGES.get(target, target)
-            stats.merged.add(tally)
-            merges.append(_describe_merge(lemma, target, tally, word_forms, rows_in_book))
-            _merge_tally(tallies.setdefault(target, _Tally()), tallies.pop(lemma))
-        elif any(_candidates(form, word_forms) for form in tally.forms):
-            stats.unresolved.add(tally)
-        else:
-            stats.no_match.add(tally)
-    merges.sort(key=lambda merge: (-merge.count, merge.from_lemma))
-    return merges, stats
+    for uses in uses_by_group.values():
+        for group, count in uses.items():
+            getattr(stats, group).occurrences += count
+        biggest = max(sorted(uses), key=uses.__getitem__)
+        getattr(stats, biggest).rows += 1
 
-
-def _describe_merge(
-    lemma: str, target: str, tally: _Tally, word_forms: dict, rows_in_book: set[str]
-) -> LemmaMerge:
-    tied = any(len(_candidates(form, word_forms)) > 1 for form in tally.forms)
-    return LemmaMerge(
-        from_lemma=lemma,
-        to_lemma=target,
-        count=tally.count,
-        pos=tally.pos.most_common(1)[0][0],
-        forms=[form for form, _ in tally.forms.most_common()],
-        example=tally.example,
-        example_spans=tally.example_spans,
-        method="tie_break" if tied else "only_match",
-        new_row=target not in rows_in_book,
-    )
+    merges = [
+        LemmaMerge(
+            from_lemma=lemma,
+            to_lemma=target,
+            count=tally.count,
+            pos=tally.pos.most_common(1)[0][0],
+            forms=[form for form, _ in tally.forms.most_common()],
+            example=tally.example,
+            example_spans=tally.example_spans,
+            method=methods[(lemma, target)],
+            new_row=target not in rows_in_book,
+        )
+        for (lemma, target), tally in moved.items()
+    ]
+    merges.sort(key=lambda merge: (-merge.count, merge.from_lemma, merge.to_lemma))
+    return rows, merges, stats
 
 
 def _merge_tally(target: _Tally, source: _Tally) -> None:
@@ -278,20 +293,27 @@ def _merge_tally(target: _Tally, source: _Tally) -> None:
     target.stop_count += source.stop_count
     target.forms.update(source.forms)
     target.pos.update(source.pos)
-    if not target.example or (source.example_is_good and not target.example_is_good):
+    if target.example and target.example_sentence == source.example_sentence:
+        # Both chose the same sentence, so all of these words are now this word.
+        target.example_spans = sorted({*target.example_spans, *source.example_spans})
+    elif (
+        not target.example
+        or (source.example_is_good and not target.example_is_good)
+        or (
+            source.example_is_good == target.example_is_good
+            and source.example_sentence < target.example_sentence
+        )
+    ):
         target.example = source.example
         target.example_is_good = source.example_is_good
         target.example_spans = source.example_spans
-    elif target.example == source.example:
-        # Both rows chose the same sentence, so all of these words are now this word.
-        target.example_spans = sorted({*target.example_spans, *source.example_spans})
+        target.example_sentence = source.example_sentence
 
 
 def analyze_text(text: str, nlp) -> AnalysisResult:
-    tallies: dict[str, _Tally] = {}
+    readings: dict[tuple, _Tally] = {}
     total_tokens = 0
     translations = load_translations()
-    verb_forms = load_verb_forms()
 
     # By default nlp.pipe groups up to 1,000 texts into a batch, which would process
     # every chunk at once and undo the memory saving of splitting the text.
@@ -313,13 +335,12 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
                 lemma_parts = token.lemma_.lower().split()
                 if not lemma_parts:
                     continue
-                lemma = fix_verb_lemma(
-                    token.lower_, lemma_parts[0], token.pos_, verb_forms, translations
-                )
-                lemma = split_pronoun(lemma, token.pos_, token.morph, token.lower_)
+                lemma = split_pronoun(lemma_parts[0], token.pos_, token.morph, token.lower_)
+                # The split used this word's tags, so the dictionary can't improve on it.
+                settled = lemma != lemma_parts[0]
                 lemma = LEMMA_MERGES.get(lemma, lemma)
 
-                tally = tallies.setdefault(lemma, _Tally())
+                tally = readings.setdefault((lemma, token.lower_, token.pos_, settled), _Tally())
                 tally.count += 1
                 tally.stop_count += token.is_stop
                 tally.forms[token.lower_] += 1
@@ -340,7 +361,7 @@ def analyze_text(text: str, nlp) -> AnalysisResult:
                     start = word_starts[token.i]
                     tally.example_spans.append((start, start + len(token.text)))
 
-    merges, match_stats = correct_unknown_lemmas(tallies, load_word_forms(), translations)
+    tallies, merges, match_stats = resolve_lemmas(readings, load_lemma_options(), load_word_forms())
 
     # Sorting by lemma as well makes ties come out in the same order every run.
     ordered = sorted(tallies.items(), key=lambda item: (-item[1].count, item[0]))

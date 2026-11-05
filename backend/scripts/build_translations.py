@@ -16,8 +16,8 @@ from collections import defaultdict
 from pathlib import Path
 
 OUTPUT_FILE = Path(__file__).parent.parent / "data" / "translations.json"
-VERB_FORMS_FILE = OUTPUT_FILE.parent / "verb_forms.json.gz"
 WORD_FORMS_FILE = OUTPUT_FILE.parent / "word_forms.json.gz"
+LEMMA_OPTIONS_FILE = OUTPUT_FILE.parent / "lemma_options.json.gz"
 
 # Entries in a verb's table that aren't forms of that verb.
 ASPECT_TAGS = {"imperfective", "perfective"}
@@ -28,6 +28,18 @@ NON_FORM_TAGS = {"table-tags", "inflection-template", "class", "canonical", "rom
 INFLECTION_TAGS = {
     "singular", "plural", "nominative", "genitive", "dative", "accusative",
     "instrumental", "locative", "vocative", "comparative", "superlative",
+}
+
+# Wiktionary links an entry to another word for many reasons. Only a link carrying one of
+# these tags means "this is an inflected form of that word".
+GRAMMAR_TAGS = INFLECTION_TAGS | {
+    "first-person", "second-person", "third-person", "past", "present", "future",
+    "imperative", "conditional", "participle", "impersonal",
+}
+
+# Links that aren't inflections, even if they also carry a grammar tag.
+RELATED_WORD_TAGS = {
+    "diminutive", "augmentative", "abbreviation", "alternative", "misspelling", "noun-from-verb",
 }
 
 # Names, letters, prefixes and so on aren't vocabulary a learner looks up here.
@@ -191,26 +203,6 @@ def build_table(records) -> dict[str, dict[str, str]]:
     return dict(table)
 
 
-def build_verb_forms(records) -> dict[str, str]:
-    """Map each verb form to its dictionary word: {"poszedłem": "pójść"}.
-
-    A form that could belong to several verbs is left out, because a wrong guess
-    would be worse than keeping spaCy's answer.
-    """
-    candidates = defaultdict(set)
-    for record in records:
-        word = record.get("word", "").lower()
-        if not word or record.get("pos") != "verb":
-            continue
-        for entry in record.get("forms", []):
-            form = (entry.get("form") or "").lower()
-            tags = set(entry.get("tags", []))
-            # Tables also list a verb's partner ("pójść" lists "iść") and template notes.
-            if form and " " not in form and not tags <= ASPECT_TAGS and not tags & NON_FORM_TAGS:
-                candidates[form].add(word)
-    return {form: next(iter(words)) for form, words in candidates.items() if len(words) == 1}
-
-
 def is_inflected_form(entry: dict, pos: str) -> bool:
     """Is this entry in a word's table really a form of that word?"""
     form = entry.get("form") or ""
@@ -239,6 +231,62 @@ def build_word_forms(records, translated_words: set[str]) -> dict[str, list[str]
     return {form: sorted(words) for form, words in candidates.items()}
 
 
+def is_inflection_link(sense: dict) -> bool:
+    """Does this sense say the entry is an inflected form of another word?
+
+    "pani" links to "pan" as its "female equivalent", but it's a different word.
+    """
+    tags = set(sense.get("tags", []))
+    gloss = (sense.get("glosses") or [""])[-1]
+    return (
+        bool(sense.get("form_of"))
+        and bool(tags & GRAMMAR_TAGS)
+        and not tags & RELATED_WORD_TAGS
+        and "equivalent" not in gloss
+    )
+
+
+def build_lemma_options(records) -> dict:
+    """List the real dictionary words, and the words each spelling could belong to.
+
+    An entry that is only a form of another word, like "szedł", isn't a real word here.
+    Options are grouped by part of speech and stored as text, like "noun=rozum;verb=rozumieć",
+    because a million small dictionaries would take far more memory.
+    """
+    real_words = set()
+    options = defaultdict(lambda: defaultdict(set))
+    for record in records:
+        word, pos = record.get("word", "").lower(), record.get("pos")
+        if not word or pos not in KEPT_POS:
+            continue
+        senses = record.get("senses", [])
+        if senses and not all(sense.get("form_of") for sense in senses):
+            real_words.add(word)
+            options[word][pos].add(word)
+            for entry in record.get("forms", []):
+                if is_inflected_form(entry, pos):
+                    options[entry["form"].lower()][pos].add(word)
+        for sense in senses:
+            if is_inflection_link(sense):
+                for link in sense["form_of"]:
+                    options[word][pos].add(link["word"].lower())
+
+    def encode(by_pos: dict) -> str:
+        parts = []
+        for pos in sorted(by_pos):
+            # A phrase like "chłop pańszczyźniany" can't be a lemma for one word.
+            words = sorted(word for word in by_pos[pos] if not re.search(r"[ ,;=]", word))
+            if words:
+                parts.append(f"{pos}={','.join(words)}")
+        return ";".join(parts)
+
+    encoded = {form: encode(by_pos) for form, by_pos in options.items()}
+    return {
+        "real_words": sorted(real_words),
+        "options": {form: value for form, value in encoded.items() if value},
+    }
+
+
 def write_compressed_json(path: Path, data: dict) -> None:
     # mtime=0 means a rebuild with the same data gives an identical file for Git.
     path.write_bytes(
@@ -250,13 +298,16 @@ def main(source: str) -> None:
     with open(source, encoding="utf-8") as handle:
         table = build_table(json.loads(line) for line in handle)
     with open(source, encoding="utf-8") as handle:
-        verb_forms = build_verb_forms(json.loads(line) for line in handle)
-    write_compressed_json(VERB_FORMS_FILE, verb_forms)
-    print(f"{len(verb_forms):,} verb forms, {VERB_FORMS_FILE.stat().st_size / 1e6:.1f} MB")
-    with open(source, encoding="utf-8") as handle:
         word_forms = build_word_forms((json.loads(line) for line in handle), set(table))
     write_compressed_json(WORD_FORMS_FILE, word_forms)
     print(f"{len(word_forms):,} word forms, {WORD_FORMS_FILE.stat().st_size / 1e6:.1f} MB")
+    with open(source, encoding="utf-8") as handle:
+        lemma_options = build_lemma_options(json.loads(line) for line in handle)
+    write_compressed_json(LEMMA_OPTIONS_FILE, lemma_options)
+    print(
+        f"{len(lemma_options['real_words']):,} real words, {len(lemma_options['options']):,} spellings, "
+        f"{LEMMA_OPTIONS_FILE.stat().st_size / 1e6:.1f} MB"
+    )
     OUTPUT_FILE.parent.mkdir(exist_ok=True)
     # Sorted, with one word per line, so a rebuild gives a readable Git diff.
     lines = [

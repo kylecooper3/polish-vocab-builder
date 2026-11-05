@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.cleaning import clean_pages, looks_garbled
 from app.extraction import UnreadableFileError, UnsupportedFormatError, extract_pages
 from app.lemmas import AnalysisResult, analyze_text, load_model
-from app.translations import load_translations, load_verb_forms, load_word_forms
+from app.translations import load_lemma_options, load_translations, load_word_forms
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     # Load the model and data at startup so the first user doesn't wait for them.
     load_model()
     load_translations()
-    load_verb_forms()
+    load_lemma_options()
     load_word_forms()
     yield
 

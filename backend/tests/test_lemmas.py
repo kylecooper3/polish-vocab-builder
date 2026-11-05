@@ -7,12 +7,12 @@ from spacy.vocab import Vocab
 from app.lemmas import (
     _Tally,
     analyze_text,
-    correct_unknown_lemmas,
-    find_correct_lemma,
-    fix_verb_lemma,
+    choose_lemma,
+    resolve_lemmas,
     split_into_chunks,
     split_pronoun,
 )
+from app.translations import LemmaOptions
 
 
 def _entry(result, lemma):
@@ -40,32 +40,6 @@ def test_wrong_verb_stems_are_replaced_with_the_real_lemma(nlp):
     lemmas = {entry.lemma for entry in result.lemmas}
     assert {"pójść", "rzec"} <= lemmas
     assert not {"poszedć", "rzekć", "poszedłbym"} & lemmas
-
-
-def test_fix_verb_lemma_replaces_a_stem_not_in_the_dictionary():
-    assert fix_verb_lemma("poszedłem", "poszedć", "VERB", {"poszedłem": "pójść"}, {}) == "pójść"
-
-
-def test_fix_verb_lemma_replaces_a_lemma_that_is_just_the_word():
-    forms = {"mógłbym": "móc"}
-    assert fix_verb_lemma("mógłbym", "mógłbym", "VERB", forms, {"mógłbym": {}}) == "móc"
-
-
-def test_fix_verb_lemma_keeps_a_good_lemma():
-    forms = {"mam": "mamić"}
-    assert fix_verb_lemma("mam", "mieć", "VERB", forms, {"mieć": {}}) == "mieć"
-
-
-def test_fix_verb_lemma_skips_words_that_only_look_like_verbs():
-    assert fix_verb_lemma("zdrów", "zdrów", "VERB", {"zdrów": "zdrowić"}, {}) == "zdrów"
-
-
-def test_fix_verb_lemma_only_changes_verbs():
-    assert fix_verb_lemma("psem", "psem", "NOUN", {"psem": "psać"}, {}) == "psem"
-
-
-def test_fix_verb_lemma_keeps_spacys_answer_when_the_form_is_unknown():
-    assert fix_verb_lemma("xyz", "xyzać", "VERB", {}, {}) == "xyzać"
 
 
 def test_wybory_is_counted_as_wybor(nlp):
@@ -164,93 +138,6 @@ def test_short_text_is_one_chunk():
     assert split_into_chunks("") == []
 
 
-def _tally(forms, pos="NOUN", example="", good_example=False, stop_count=0, spans=None):
-    return _Tally(
-        count=sum(forms.values()),
-        stop_count=stop_count,
-        forms=Counter(forms),
-        pos=Counter({pos: sum(forms.values())}),
-        example=example,
-        example_is_good=good_example,
-        example_spans=spans or [],
-    )
-
-
-def test_find_correct_lemma_uses_the_only_match():
-    assert find_correct_lemma(_tally({"krążkiem": 1}), {"krążkiem": ["krążek"]}, set()) == "krążek"
-
-
-def test_find_correct_lemma_breaks_a_tie_with_a_word_already_in_the_book():
-    table = {"meble": ["mebel", "meble"]}
-    assert find_correct_lemma(_tally({"meble": 1}), table, {"mebel"}) == "mebel"
-
-
-def test_find_correct_lemma_does_not_guess_when_no_tie_break_applies():
-    table = {"meble": ["mebel", "meble"]}
-    assert find_correct_lemma(_tally({"meble": 1}), table, set()) is None
-    assert find_correct_lemma(_tally({"meble": 1}), table, {"mebel", "meble"}) is None
-
-
-def test_find_correct_lemma_leaves_unknown_words_alone():
-    assert find_correct_lemma(_tally({"sepulki": 2}), {}, set()) is None
-
-
-def test_find_correct_lemma_needs_every_form_to_agree():
-    table = {"aa": ["pies"], "bb": ["kot"]}
-    assert find_correct_lemma(_tally({"aa": 1, "bb": 1}), table, set()) is None
-    assert find_correct_lemma(_tally({"aa": 1, "bb": 1}), {"aa": ["pies"]}, set()) is None
-
-
-def test_correct_unknown_lemmas_merges_into_an_existing_row():
-    tallies = {
-        "mebel": _tally({"meble": 1, "mebli": 1}, example="Stare meble.", good_example=True),
-        "mebl": _tally({"meble": 1}, example="Inne meble tutaj stoją razem.", good_example=True, stop_count=1),
-    }
-    correct_unknown_lemmas(tallies, {"meble": ["mebel", "meble"]}, {"mebel": {}, "meble": {}})
-    assert set(tallies) == {"mebel"}
-    assert tallies["mebel"].count == 3
-    assert tallies["mebel"].stop_count == 1
-    assert tallies["mebel"].forms == Counter({"meble": 2, "mebli": 1})
-    assert tallies["mebel"].pos["NOUN"] == 3
-    assert tallies["mebel"].example == "Stare meble."
-
-
-def test_correct_unknown_lemmas_creates_a_row_when_needed():
-    tallies = {"krążk": _tally({"krążkiem": 2}, example="Bawił się krążkiem.")}
-    correct_unknown_lemmas(tallies, {"krążkiem": ["krążek"]}, {"krążek": {}})
-    assert set(tallies) == {"krążek"}
-    assert tallies["krążek"].count == 2
-    assert tallies["krążek"].example == "Bawił się krążkiem."
-
-
-def test_correct_unknown_lemmas_upgrades_to_a_better_example():
-    tallies = {
-        "mebel": _tally({"mebli": 1}, example="Mebli!"),
-        "mebl": _tally({"meble": 1}, example="Inne meble tutaj stoją razem.", good_example=True),
-    }
-    correct_unknown_lemmas(tallies, {"meble": ["mebel"]}, {"mebel": {}})
-    assert tallies["mebel"].example == "Inne meble tutaj stoją razem."
-    assert tallies["mebel"].example_is_good is True
-
-
-def test_correct_unknown_lemmas_ignores_words_that_have_a_translation():
-    tallies = {"stać": _tally({"stały": 1})}
-    correct_unknown_lemmas(tallies, {"stały": ["stały"]}, {"stać": {}, "stały": {}})
-    assert set(tallies) == {"stać"}
-
-
-def test_correct_unknown_lemmas_keeps_words_it_cannot_place():
-    tallies = {"sepulka": _tally({"sepulki": 2})}
-    correct_unknown_lemmas(tallies, {}, {})
-    assert tallies["sepulka"].count == 2
-
-
-def test_correct_unknown_lemmas_applies_merges_to_the_target():
-    tallies = {"wybor": _tally({"wyborach": 1})}
-    correct_unknown_lemmas(tallies, {"wyborach": ["wybory"]}, {"wybory": {}, "wybór": {}})
-    assert set(tallies) == {"wybór"}
-
-
 def test_a_wrong_noun_lemma_is_corrected_in_a_real_sentence(nlp):
     result = analyze_text("Bawił się małym krążkiem.", nlp)
     assert _entry(result, "krążk") is None
@@ -264,84 +151,9 @@ def test_a_made_up_word_stays_in_the_list_with_no_translation(nlp):
     assert any(entry.translation == "" and "sepulkę" in entry.forms for entry in result.lemmas)
 
 
-def test_find_correct_lemma_skips_forms_of_unrelated_words():
-    assert find_correct_lemma(_tally({"bylem": 2}), {"bylem": ["byl"]}, set()) is None
-
-
 def test_rocznie_keeps_its_own_meaning(nlp):
     entry = _entry(analyze_text("Zarabiał tysiąc rubli rocznie w tej firmie.", nlp), "rocznie")
     assert "annually" in entry.translation
-
-
-def _report_tallies():
-    return {
-        "mebel": _tally({"mebli": 2}),  # in the dictionary
-        "mebl": _tally({"meble": 1}, example="Stare meble."),  # tied, then settled by "mebel"
-        "krążk": _tally({"krążkiem": 3}),  # one match, and no "krążek" row yet
-        "sepulka": _tally({"sepulki": 4}),  # not in the table at all
-        "palc": _tally({"palcach": 5}),  # tied, and neither candidate is in the book
-        "bylem": _tally({"bylem": 6}),  # an exception, so it counts as no match
-    }
-
-
-FORMS_FOR_REPORT = {
-    "meble": ["mebel", "meble"],
-    "krążkiem": ["krążek"],
-    "palcach": ["palec", "palce"],
-    "bylem": ["byl"],
-}
-DICTIONARY_FOR_REPORT = {"mebel": {}, "meble": {}, "krążek": {}, "palec": {}, "palce": {}, "byl": {}}
-
-
-def test_correction_report_puts_every_row_in_one_group():
-    _, stats = correct_unknown_lemmas(_report_tallies(), FORMS_FOR_REPORT, DICTIONARY_FOR_REPORT)
-    assert (stats.in_dictionary.rows, stats.in_dictionary.occurrences) == (1, 2)
-    assert (stats.merged.rows, stats.merged.occurrences) == (2, 4)
-    assert (stats.unresolved.rows, stats.unresolved.occurrences) == (1, 5)
-    assert (stats.no_match.rows, stats.no_match.occurrences) == (2, 10)
-
-
-def test_correction_report_describes_each_merge():
-    merges, _ = correct_unknown_lemmas(_report_tallies(), FORMS_FOR_REPORT, DICTIONARY_FOR_REPORT)
-    by_source = {merge.from_lemma: merge for merge in merges}
-    assert set(by_source) == {"mebl", "krążk"}
-
-    tied = by_source["mebl"]
-    assert (tied.to_lemma, tied.count, tied.pos) == ("mebel", 1, "NOUN")
-    assert tied.forms == ["meble"]
-    assert tied.example == "Stare meble."
-    assert tied.method == "tie_break"
-    assert tied.new_row is False
-
-    only = by_source["krążk"]
-    assert (only.to_lemma, only.method, only.new_row) == ("krążek", "only_match", True)
-
-
-def test_correction_report_lists_the_biggest_merges_first():
-    merges, _ = correct_unknown_lemmas(_report_tallies(), FORMS_FOR_REPORT, DICTIONARY_FOR_REPORT)
-    assert [merge.from_lemma for merge in merges] == ["krążk", "mebl"]
-
-
-def test_a_merge_keeps_the_row_it_came_from_out_of_the_final_counts():
-    tallies = _report_tallies()
-    correct_unknown_lemmas(tallies, FORMS_FOR_REPORT, DICTIONARY_FOR_REPORT)
-    assert {"mebl", "krążk"}.isdisjoint(tallies)
-    assert tallies["mebel"].count == 3
-
-
-def test_match_stats_cover_the_whole_book(nlp):
-    result = analyze_text("Bawił się małym krążkiem. Mam psa. Kupił nową zbruglawą sepulkę.", nlp)
-    groups = [
-        result.match_stats.in_dictionary,
-        result.match_stats.merged,
-        result.match_stats.unresolved,
-        result.match_stats.no_match,
-    ]
-    assert sum(group.occurrences for group in groups) == result.total_tokens
-    # Merged rows disappear, but each new word they created adds one back.
-    new_words = {merge.to_lemma for merge in result.merges if merge.new_row}
-    rows_before = sum(group.rows for group in groups)
-    assert rows_before - result.match_stats.merged.rows + len(new_words) == result.unique_lemmas
 
 
 def test_analysis_reports_a_real_merge(nlp):
@@ -358,15 +170,6 @@ def test_empty_text_has_empty_stats(nlp):
     assert result.merges == []
     assert result.match_stats.merged.rows == 0
     assert result.match_stats.no_match.occurrences == 0
-
-
-def test_stats_do_not_count_a_merge_twice_when_its_target_comes_later():
-    # Rows are checked in the order the book introduced them, so "mebl" can come first.
-    tallies = {"mebl": _tally({"meble": 1}), "mebel": _tally({"mebli": 2})}
-    _, stats = correct_unknown_lemmas(tallies, {"meble": ["mebel"]}, {"mebel": {}})
-    assert stats.merged.occurrences == 1
-    assert stats.in_dictionary.occurrences == 2
-    assert tallies["mebel"].count == 3
 
 
 @pytest.mark.parametrize(
@@ -464,30 +267,246 @@ def test_a_repeated_sentence_does_not_add_more_marks(nlp):
     assert entry.example_spans == [(4, 8)]
 
 
-def test_merged_row_keeps_marks_when_its_example_is_used():
-    tallies = {
-        "krążk": _tally({"krążkiem": 1}, example="Bawił się krążkiem.", spans=[(10, 18)])
-    }
-    merges, _ = correct_unknown_lemmas(tallies, {"krążkiem": ["krążek"]}, {"krążek": {}})
-    assert tallies["krążek"].example_spans == [(10, 18)]
-    assert merges[0].example_spans == [(10, 18)]
+def _options(real_words=(), **forms):
+    return LemmaOptions(real_words=set(real_words), options=forms)
 
 
-def test_merged_row_does_not_add_marks_to_a_different_sentence():
-    tallies = {
-        "mebel": _tally({"mebli": 1}, example="Nie ma mebli.", good_example=True, spans=[(7, 12)]),
-        "mebl": _tally({"meble": 1}, example="Stare meble stoją.", good_example=True, spans=[(6, 11)]),
-    }
-    correct_unknown_lemmas(tallies, {"meble": ["mebel"]}, {"mebel": {}})
-    assert tallies["mebel"].example == "Nie ma mebli."
-    assert tallies["mebel"].example_spans == [(7, 12)]
+def _chosen(form, lemma, pos, options, word_forms=None, rows=()):
+    return choose_lemma(form, lemma, pos, options, word_forms or {}, set(rows))
 
 
-def test_merged_row_combines_marks_in_the_same_sentence():
+def test_agreement_keeps_spacys_lemma():
+    options = _options({"mieć"}, mam="verb=mieć,mamić")
+    choice = _chosen("mam", "mieć", "VERB", options)
+    assert (choice.lemma, choice.group) == ("mieć", "in_dictionary")
+
+
+def test_a_made_up_lemma_takes_the_only_match():
+    options = _options({"krążek"}, krążkiem="noun=krążek")
+    choice = _chosen("krążkiem", "krążk", "NOUN", options)
+    assert (choice.lemma, choice.group, choice.method) == ("krążek", "merged", "only_match")
+
+
+def test_an_entry_that_is_only_a_form_does_not_count_as_a_real_word():
+    options = _options({"rozumieć", "rozum"}, rozumie="noun=rozum;verb=rozumieć")
+    assert _chosen("rozumie", "rozumie", "VERB", options).lemma == "rozumieć"
+
+
+def test_part_of_speech_chooses_between_words():
+    options = _options({"rozumieć", "rozum"}, rozumie="noun=rozum;verb=rozumieć")
+    assert _chosen("rozumie", "rozumie", "NOUN", options).lemma == "rozum"
+
+
+def test_a_wrong_tag_can_still_reach_the_only_word():
+    options = _options({"donieść"}, doniósł="verb=donieść")
+    assert _chosen("doniósł", "doniósł", "NOUN", options).lemma == "donieść"
+
+
+def test_a_real_word_that_does_not_fit_the_form_is_replaced():
+    options = _options({"jeść", "jechać"}, jedziemy="verb=jechać")
+    choice = _chosen("jedziemy", "jeść", "VERB", options)
+    assert (choice.lemma, choice.group) == ("jechać", "merged")
+
+
+def test_a_real_word_is_not_replaced_by_the_form_itself():
+    # "ze" is its own entry, but it's only another spelling of "z" ("with").
+    options = _options({"z", "ze"}, ze="prep=ze")
+    choice = _chosen("ze", "z", "ADP", options)
+    assert (choice.lemma, choice.group) == ("z", "in_dictionary")
+
+
+def test_a_real_word_is_kept_when_several_others_fit():
+    options = _options({"on", "jeść", "być"}, je="verb=być,jeść")
+    assert _chosen("je", "on", "VERB", options).lemma == "on"
+
+
+def test_a_tie_is_settled_by_a_word_already_in_the_book():
+    options = _options({"robot", "robota"}, robocie="noun=robot,robota")
+    choice = _chosen("robocie", "robocie", "NOUN", options, rows={"robot"})
+    assert (choice.lemma, choice.method) == ("robot", "tie_break")
+
+
+def test_a_tie_with_no_clear_answer_stays_unresolved():
+    options = _options({"robot", "robota"}, robocie="noun=robot,robota")
+    for rows in (set(), {"robot", "robota"}):
+        choice = _chosen("robocie", "robocie", "NOUN", options, rows=rows)
+        assert (choice.lemma, choice.group) == ("robocie", "unresolved")
+
+
+def test_the_form_table_is_the_fallback():
+    choice = _chosen("największej", "największej", "ADJ", _options(), {"największej": ["największy"]})
+    assert (choice.lemma, choice.group) == ("największy", "merged")
+
+
+def test_a_word_found_nowhere_stays_as_it_is():
+    choice = _chosen("sepulki", "sepulka", "NOUN", _options())
+    assert (choice.lemma, choice.group) == ("sepulka", "no_match")
+
+
+@pytest.mark.parametrize("form", ["bylem", "zdrów", "dziw", "laty", "lewo", "kuzynka"])
+def test_known_false_matches_are_left_alone(form):
+    options = _options(set(), **{form: "noun=inne"})
+    assert _chosen(form, "x", "NOUN", options).lemma == "x"
+
+
+def _reading(count, example="", good=False, sentence=-1, spans=None, stop=0):
+    return _Tally(
+        count=count, stop_count=stop, example=example, example_is_good=good,
+        example_sentence=sentence, example_spans=spans or [],
+    )
+
+
+def _readings(*items):
+    readings = {}
+    for lemma, form, pos, settled, tally in items:
+        tally.forms[form] = tally.count
+        tally.pos[pos] = tally.count
+        readings[(lemma, form, pos, settled)] = tally
+    return readings
+
+
+def test_forms_of_one_spacy_row_can_go_to_different_words():
+    options = _options({"pies", "kot"}, aa="noun=pies", bb="noun=kot")
+    rows, merges, _ = resolve_lemmas(
+        _readings(("xx", "aa", "NOUN", False, _reading(1)), ("xx", "bb", "NOUN", False, _reading(2))),
+        options, {},
+    )
+    assert (rows["pies"].count, rows["kot"].count) == (1, 2)
+    assert {(merge.from_lemma, merge.to_lemma) for merge in merges} == {("xx", "pies"), ("xx", "kot")}
+
+
+def test_a_settled_pronoun_is_not_checked_again():
+    options = _options({"ona", "jej"}, jej="pron=jej,ona")
+    rows, merges, _ = resolve_lemmas(_readings(("ona", "jej", "PRON", True, _reading(3))), options, {})
+    assert rows["ona"].count == 3
+    assert merges == []
+
+
+def test_merging_combines_counts_forms_and_stopwords():
+    options = _options({"mebel"}, meble="noun=mebel", mebli="noun=mebel")
+    rows, _, _ = resolve_lemmas(
+        _readings(
+            ("mebel", "mebli", "NOUN", False, _reading(2)),
+            ("mebl", "meble", "NOUN", False, _reading(1, stop=1)),
+        ),
+        options, {},
+    )
+    assert set(rows) == {"mebel"}
+    assert rows["mebel"].count == 3
+    assert rows["mebel"].stop_count == 1
+    assert rows["mebel"].forms == Counter({"mebli": 2, "meble": 1})
+    assert rows["mebel"].pos["NOUN"] == 3
+
+
+def test_a_row_keeps_the_earliest_good_example():
+    options = _options({"mebel"}, meble="noun=mebel", mebli="noun=mebel")
+    rows, _, _ = resolve_lemmas(
+        _readings(
+            ("mebel", "mebli", "NOUN", False, _reading(1, "Late.", True, 9, [(0, 5)])),
+            ("mebl", "meble", "NOUN", False, _reading(1, "Early.", True, 2, [(0, 6)])),
+        ),
+        options, {},
+    )
+    assert rows["mebel"].example == "Early."
+    assert rows["mebel"].example_spans == [(0, 6)]
+
+
+def test_a_good_example_beats_a_short_one():
+    options = _options({"mebel"}, meble="noun=mebel", mebli="noun=mebel")
+    rows, _, _ = resolve_lemmas(
+        _readings(
+            ("mebel", "mebli", "NOUN", False, _reading(1, "Mebli!", False, 1, [(0, 5)])),
+            ("mebl", "meble", "NOUN", False, _reading(1, "Stare meble tu stoją razem.", True, 8, [(6, 11)])),
+        ),
+        options, {},
+    )
+    assert rows["mebel"].example.startswith("Stare")
+    assert rows["mebel"].example_is_good is True
+
+
+def test_forms_in_the_same_sentence_are_all_marked():
+    options = _options({"mebel"}, meble="noun=mebel", mebli="noun=mebel")
     sentence = "Stare meble i mebli."
-    tallies = {
-        "mebel": _tally({"mebli": 1}, example=sentence, spans=[(14, 19)]),
-        "mebl": _tally({"meble": 1}, example=sentence, spans=[(6, 11)]),
-    }
-    correct_unknown_lemmas(tallies, {"meble": ["mebel"]}, {"mebel": {}})
-    assert tallies["mebel"].example_spans == [(6, 11), (14, 19)]
+    rows, _, _ = resolve_lemmas(
+        _readings(
+            ("mebel", "mebli", "NOUN", False, _reading(1, sentence, False, 3, [(14, 19)])),
+            ("mebl", "meble", "NOUN", False, _reading(1, sentence, False, 3, [(6, 11)])),
+        ),
+        options, {},
+    )
+    assert rows["mebel"].example_spans == [(6, 11), (14, 19)]
+
+
+def test_stats_put_every_spacy_row_in_one_group_and_count_every_use():
+    options = _options({"mebel", "krążek", "palec", "palce"},
+                       mebli="noun=mebel", meble="noun=mebel", krążkiem="noun=krążek", palcach="noun=palce,palec")
+    _, _, stats = resolve_lemmas(
+        _readings(
+            ("mebel", "mebli", "NOUN", False, _reading(2)),
+            ("krążk", "krążkiem", "NOUN", False, _reading(3)),
+            ("palc", "palcach", "NOUN", False, _reading(5)),
+            ("sepulka", "sepulki", "NOUN", False, _reading(4)),
+        ),
+        options, {},
+    )
+    assert (stats.in_dictionary.rows, stats.in_dictionary.occurrences) == (1, 2)
+    assert (stats.merged.rows, stats.merged.occurrences) == (1, 3)
+    assert (stats.unresolved.rows, stats.unresolved.occurrences) == (1, 5)
+    assert (stats.no_match.rows, stats.no_match.occurrences) == (1, 4)
+
+
+def test_a_row_split_between_groups_counts_once_under_its_biggest_group():
+    options = _options({"pies"}, aa="noun=pies")
+    _, _, stats = resolve_lemmas(
+        _readings(("xx", "aa", "NOUN", False, _reading(5)), ("xx", "bb", "NOUN", False, _reading(1))),
+        options, {},
+    )
+    assert (stats.merged.rows, stats.merged.occurrences) == (1, 5)
+    assert (stats.no_match.rows, stats.no_match.occurrences) == (0, 1)
+
+
+def test_merges_are_described_with_the_biggest_first():
+    options = _options({"mebel", "krążek", "meble"}, krążkiem="noun=krążek", meble="noun=mebel,meble")
+    _, merges, _ = resolve_lemmas(
+        _readings(
+            ("mebel", "mebli", "NOUN", True, _reading(2)),
+            ("meble_", "meble", "NOUN", False, _reading(1, "Stare meble.", spans=[(6, 11)])),
+            ("krążk", "krążkiem", "NOUN", False, _reading(3)),
+        ),
+        options, {},
+    )
+    assert [merge.from_lemma for merge in merges] == ["krążk", "meble_"]
+    tied = merges[1]
+    assert (tied.to_lemma, tied.count, tied.pos, tied.method, tied.new_row) == ("mebel", 1, "NOUN", "tie_break", False)
+    assert tied.forms == ["meble"]
+    assert tied.example_spans == [(6, 11)]
+    assert (merges[0].to_lemma, merges[0].method, merges[0].new_row) == ("krążek", "only_match", True)
+
+
+def test_match_stats_cover_the_whole_book(nlp):
+    result = analyze_text("Bawił się małym krążkiem. Mam psa. Kupił nową zbruglawą sepulkę.", nlp)
+    stats = result.match_stats
+    groups = [stats.in_dictionary, stats.merged, stats.unresolved, stats.no_match]
+    assert sum(group.occurrences for group in groups) == result.total_tokens
+    assert stats.merged.occurrences == sum(merge.count for merge in result.merges)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "form", "lemma"),
+    [
+        ("Czy my jedziemy, czy stoimy?", "jedziemy", "jechać"),
+        ("Chcę iść na spacer, gdybym mógłbym tam pójść.", "mógłbym", "móc"),
+        ("Moja pani mieszka tutaj od roku.", "pani", "pani"),
+        ("Przyszedł ze szkoły do domu.", "ze", "z"),
+        ("Zrobiłbym to przed laty, ale nie dziś.", "laty", "rok"),
+        ("W pokoju stały stare meble.", "stały", "stać"),
+    ],
+)
+def test_real_sentences_get_the_right_word(nlp, sentence, form, lemma):
+    entry = _entry(analyze_text(sentence, nlp), lemma)
+    assert entry is not None and form in entry.forms
+
+
+def test_a_lemma_confirmed_by_the_form_table_is_not_counted_as_merged():
+    choice = _chosen("kąciku", "kącik", "NOUN", _options(), {"kąciku": ["kącik"]})
+    assert (choice.lemma, choice.group) == ("kącik", "in_dictionary")

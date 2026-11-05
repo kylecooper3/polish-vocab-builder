@@ -2,6 +2,7 @@
 
 import gzip
 import json
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -11,8 +12,8 @@ DATA_FILE = DATA_FOLDER / "translations.json"
 # Hand-written fixes for common words, where a learner would notice a poor translation.
 OVERRIDES_FILE = DATA_FOLDER / "translation_overrides.json"
 
-VERB_FORMS_FILE = DATA_FOLDER / "verb_forms.json.gz"
 WORD_FORMS_FILE = DATA_FOLDER / "word_forms.json.gz"
+LEMMA_OPTIONS_FILE = DATA_FOLDER / "lemma_options.json.gz"
 
 # spaCy and Wiktionary name parts of speech differently, and don't always agree. Where
 # they disagree, such as "więc" (SCONJ in spaCy, a particle in Wiktionary), the fallback
@@ -34,6 +35,28 @@ SPACY_TO_WIKTIONARY = {
 }
 
 
+@dataclass
+class LemmaOptions:
+    """Which dictionary words a spelling could belong to, from Wiktionary."""
+
+    real_words: set[str]
+    options: dict[str, str]  # {"rozumie": "noun=rozum;verb=rozumieć"}
+
+    def for_form(self, form: str, spacy_pos: str) -> tuple[set[str], set[str]]:
+        """Return the words matching spaCy's part of speech, and every word."""
+        wanted = SPACY_TO_WIKTIONARY.get(spacy_pos, [])
+        matching, every = set(), set()
+        encoded = self.options.get(form)
+        if encoded:
+            for group in encoded.split(";"):
+                pos, _, words = group.partition("=")
+                words = words.split(",")
+                every.update(words)
+                if pos in wanted:
+                    matching.update(words)
+        return matching, every
+
+
 @lru_cache(maxsize=1)
 def load_translations() -> dict[str, dict[str, str]]:
     table = json.loads(DATA_FILE.read_text(encoding="utf-8"))
@@ -42,15 +65,17 @@ def load_translations() -> dict[str, dict[str, str]]:
 
 
 @lru_cache(maxsize=1)
-def load_verb_forms() -> dict[str, str]:
-    """Verb forms and their dictionary words, such as {"poszedłem": "pójść"}."""
-    return json.loads(gzip.decompress(VERB_FORMS_FILE.read_bytes()))
-
-
-@lru_cache(maxsize=1)
 def load_word_forms() -> dict[str, list[str]]:
     """Forms of all kinds and the words they could belong to: {"meble": ["mebel", "meble"]}."""
     return json.loads(gzip.decompress(WORD_FORMS_FILE.read_bytes()))
+
+
+@lru_cache(maxsize=1)
+def load_lemma_options() -> LemmaOptions:
+    data = json.loads(gzip.decompress(LEMMA_OPTIONS_FILE.read_bytes()))
+    # A word with a hand-written translation is a real word, even if Wiktionary lacks it.
+    overrides = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
+    return LemmaOptions(real_words={*data["real_words"], *overrides}, options=data["options"])
 
 
 def apply_overrides(table: dict, overrides: dict) -> dict:

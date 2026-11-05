@@ -9,13 +9,11 @@
 - **Changes:** selected, shortened and reformatted by this project.
 - **License:** this file is shared under the [Creative Commons Attribution-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/). This covers the data file only, not the rest of the project's code.
 
-## Verb forms
-
-`verb_forms.json.gz` maps Polish verb forms to their dictionary words, such as `poszedłem` to `pójść`. It's built by the same script from the conjugation tables in the same source, and is shared under the same license. The app uses it to correct verb lemmas that spaCy gets wrong.
-
 ## Word forms
 
-`word_forms.json.gz` maps forms of all kinds to every dictionary word they could belong to, such as `krążkiem` to `krążek`, or `meble` to both `mebel` and `meble`. It's built by the same script from the same source, and is shared under the same license. The app uses it to correct lemmas that aren't in the dictionary. Related words listed in an entry, such as the diminutive `piesek` under `pies`, are left out, because they're different words.
+`word_forms.json.gz` maps forms of all kinds to every dictionary word they could belong to, such as `krążkiem` to `krążek`, or `meble` to both `mebel` and `meble`. It's built by the same script from the same source, and is shared under the same license. The app uses it as a fallback for lemmas that aren't in the dictionary. Related words listed in an entry, such as the diminutive `piesek` under `pies`, are left out, because they're different words.
+
+`lemma_options.json.gz` holds the same kind of information, grouped by part of speech, such as `rozumie` to `noun=rozum;verb=rozumieć`, plus a list of the real dictionary words. An entry that's only a form of another word, like `szedł`, isn't counted as real. The app uses it to check each of spaCy's answers. It's built by the same script and shared under the same license.
 
 ## Hand-written fixes
 
