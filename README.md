@@ -31,6 +31,7 @@ It also makes the results useful for planning. In that novel (111,198 counted wo
 - **Filters** for part of speech, minimum count, stopwords and whether a word is in the dictionary, which can surface words an author invented
 - **Coverage stat**, such as "the top 500 lemmas cover 69.6% of the book"
 - **CSV export** for Anki, with the word, translation and example sentence, which also opens correctly in Excel
+- **Per-word export toggle** to leave out single words you don't want on a flashcard
 - **Statistics view** showing how the book's words matched the dictionary, with a searchable list of every merge to check by hand
 
 ## Architecture

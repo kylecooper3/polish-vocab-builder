@@ -356,6 +356,24 @@ tbody tr:last-child td {
   border-bottom: none;
 }
 
+.export-cell {
+  text-align: center;
+}
+
+.left-out td:not(.export-cell) {
+  opacity: 0.45;
+}
+
+.text-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 th {
   color: var(--muted);
   font-size: 0.85rem;

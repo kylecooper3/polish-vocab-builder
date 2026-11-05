@@ -23,6 +23,19 @@ function Results({ result, filename }) {
   })
   const [sortKey, setSortKey] = useState('rank')
   const [sortDirection, setSortDirection] = useState('asc')
+  // The lemmas unticked for export. A Set is a list that can answer "is this in here?" quickly.
+  const [leftOut, setLeftOut] = useState(new Set())
+
+  function toggleLeftOut(lemma) {
+    // As with filters, React needs a new Set to notice the change, not an edited old one.
+    const next = new Set(leftOut)
+    if (next.has(lemma)) {
+      next.delete(lemma)
+    } else {
+      next.add(lemma)
+    }
+    setLeftOut(next)
+  }
 
   function updateFilter(name, value) {
     // {...filters} copies the old object, then we overwrite one field. Passing React a
@@ -45,11 +58,12 @@ function Results({ result, filename }) {
   const { lemmas, total_tokens: totalTokens, unique_lemmas: uniqueLemmas } = result
   const filtered = applyFilters(lemmas, filters)
   const rows = sortLemmas(searchLemmas(filtered, search), sortKey, sortDirection)
+  const exportRows = rows.filter((entry) => !leftOut.has(entry.lemma))
 
   function handleExport() {
     // Exports every matching row in the current order, not just those drawn on screen.
     const bookName = filename.replace(/\.[^.]+$/, '')
-    downloadTextFile(toAnkiCsv(rows), `${bookName}-anki.csv`)
+    downloadTextFile(toAnkiCsv(exportRows), `${bookName}-anki.csv`)
   }
 
   return (
@@ -89,14 +103,22 @@ function Results({ result, filename }) {
             type="button"
             className="button filters-action"
             onClick={handleExport}
-            disabled={rows.length === 0}
+            disabled={exportRows.length === 0}
           >
-            Export {rows.length.toLocaleString()} to CSV for Anki
+            Export {exportRows.length.toLocaleString()} to CSV for Anki
           </button>
         </Filters>
 
         <p className="result-count" aria-live="polite">
           {rows.length.toLocaleString()} of {lemmas.length.toLocaleString()} lemmas match
+          {leftOut.size > 0 && (
+            <>
+              {' '}· {leftOut.size.toLocaleString()} left out of the export{' '}
+              <button type="button" className="text-button" onClick={() => setLeftOut(new Set())}>
+                Include all
+              </button>
+            </>
+          )}
         </p>
 
         <ResultsTable
@@ -104,6 +126,8 @@ function Results({ result, filename }) {
           sortKey={sortKey}
           sortDirection={sortDirection}
           onSort={handleSort}
+          leftOut={leftOut}
+          onToggleLeftOut={toggleLeftOut}
         />
       </div>
 
