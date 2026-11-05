@@ -19,9 +19,9 @@ It also makes the results useful for planning. In that novel (111,198 counted wo
 | Most frequent lemmas | Share of the book's words |
 |---|---|
 | Top 100 | 48.9% |
-| Top 500 | 69.5% |
+| Top 500 | 69.6% |
 | Top 1,000 | 78.2% |
-| Top 5,000 | 95.2% |
+| Top 5,000 | 95.3% |
 
 ## Features
 
@@ -29,7 +29,7 @@ It also makes the results useful for planning. In that novel (111,198 counted wo
 - **Sortable, searchable table** of lemmas with rank, count, part of speech, English translation, forms seen and an example sentence
 - **Search in either language**, by any Polish form or English meaning
 - **Filters** for part of speech, minimum count, stopwords and whether a word is in the dictionary, which can surface words an author invented
-- **Coverage stat**, such as "the top 500 lemmas cover 69.5% of the book"
+- **Coverage stat**, such as "the top 500 lemmas cover 69.6% of the book"
 - **CSV export** for Anki, with the word, translation and example sentence, which also opens correctly in Excel
 - **Statistics view** showing how the book's words matched the dictionary, with a searchable list of every merge to check by hand
 
@@ -118,7 +118,7 @@ python -m pytest
 ```json
 {
   "total_tokens": 3541,
-  "unique_lemmas": 1270,
+  "unique_lemmas": 1269,
   "lemmas": [
     {
       "lemma": "mecenas",
@@ -134,9 +134,9 @@ python -m pytest
   ],
   "match_stats": {
     "in_dictionary": { "rows": 1135, "occurrences": 3304 },
-    "merged": { "rows": 158, "occurrences": 194 },
+    "merged": { "rows": 159, "occurrences": 195 },
     "unresolved": { "rows": 0, "occurrences": 0 },
-    "no_match": { "rows": 37, "occurrences": 43 }
+    "no_match": { "rows": 36, "occurrences": 42 }
   },
   "merges": [
     {
@@ -181,7 +181,11 @@ python -m pytest
 2. If spaCy's lemma isn't a real word, the form's dictionary word replaces it, using the part of speech to choose. An entry that's only a form of another word, like `rozumie`, doesn't count as real, so it goes to `rozumieć`. If several words still fit, the app picks the one already in this book, and otherwise leaves it alone.
 3. If spaCy's lemma is a real word, it's only replaced when the form can't belong to it and exactly one other word fits, so `jedziemy` under `jeść` ("to eat") becomes `jechać` ("to go"). Only true inflections count, so `pani` ("Mrs.") doesn't become `pan` ("Mr."), and `ze` stays under `z`, because it's only another spelling.
 
-This replaced two earlier checks, one for verbs while reading and one for whole rows at the end. Simply removing the verb check made results worse: on *Lalka*, it added 388 false rows. So did trusting Wiktionary whenever the two disagreed. The final rule took *Lalka* from 10,235 rows to 9,785 and from 1,371 blank rows to 1,260. In a sample of 100 changes judged against their sentences, 76 were better, 20 were debatable and 4 were worse, and most of the known bad cases were then listed as exceptions. That judging wasn't done by a native speaker. It adds about 100 MB of peak memory.
+This replaced two earlier checks, one for verbs while reading and one for whole rows at the end. Simply removing the verb check made results worse: on *Lalka*, it added 388 false rows. So did trusting Wiktionary whenever the two disagreed. The final rule took *Lalka* from 10,235 rows to 9,785 and from 1,371 blank rows to 1,260. In a sample of 100 changes judged against their sentences, 76 were better, 20 were debatable and 4 were worse, and most of the known bad cases were then listed as exceptions. That judging wasn't done by a native speaker.
+
+**Keep every Wiktionary lookup in one table.** The app used to load two tables of forms, and only about 4% of the second was ever read. Moving that part into the first and deleting the second gave identical results on *Lalka* and cut peak memory from about 1.6 GB to about 1.3 GB.
+
+**Count verbal nouns under their verb.** `robienie` ("doing") is technically a noun, but it only names the action, so a learner studies it with `robić`. A word with a meaning of its own stays separate, like `mieszkanie` ("apartment"), and so does any word with two possible verbs, like `tępienie`, or a spelling that belongs to another word. This only applies to words tagged as nouns, because `zawzięcie` can also be an adverb. On *Lalka*, it moved 51 uses, taking the book to 9,750 rows and 1,222 blank rows. Each kind of change was read against its sentence, again not by a native speaker.
 
 **Split pronouns by gender and number.** spaCy files `on` ("he"), `ona` ("she"), `ono` ("it"), `oni` and `one` (both "they") under one lemma. That's a fair grammatical view, but it shows a learner "she" under "he". The app uses spaCy's gender and number tags to give each its own row, with forms like `go` under `on` and `ją` under `ona`. A sample of 30 uses per row from *Lalka* showed this works for `on` and `ona` (all 30 correct in each), but exposed a problem with `ono`: only 7 of 30 were right, because `jego` and `nim` are spelled the same for "he" and "it" and spaCy often guessed "it". So only `ono` and `je` count as "it" now, and those shared forms stay under `on`.
 
@@ -191,15 +195,15 @@ This replaced two earlier checks, one for verbs while reading and one for whole 
 
 **Filter in the browser, not on the server.** Analyzing a novel takes about 30 seconds, while filtering takes a fraction of one. The API returns every lemma with its stopword flag, so filters respond straight away without re-analyzing the book.
 
-**Measure coverage honestly.** Coverage is always a share of every counted word in the book. Hiding stopwords lowers the figure, from 69.5% to 26.4% for the top 500 in *Lalka*, rather than making it look better.
+**Measure coverage honestly.** Coverage is always a share of every counted word in the book. Hiding stopwords lowers the figure, from 69.6% to 26.4% for the top 500 in *Lalka*, rather than making it look better.
 
-**Draw 200 table rows at a time.** A novel produces over 11,000 lemmas. Drawing them all made filter changes about 3.5 times slower, so the table draws 200 and offers "Show more", while search, filters and export still use the full list.
+**Draw 200 table rows at a time.** A novel can produce about 10,000 lemmas. Drawing them all made filter changes about 3.5 times slower, so the table draws 200 and offers "Show more", while search, filters and export still use the full list.
 
 **A dictionary rather than machine translation.** A lone word has no context, so a translator has to guess, while a dictionary can show that `zamek` means both "lock" and "castle". English meanings come from Wiktionary, which is free, works offline and sends nothing to a third party. They cover 98% of the word occurrences in *Lalka*.
 
 **Automatic rules, plus a small reviewed list for common words.** Rules handle over 145,000 words, but they get some common ones wrong. So about 180 hand-written fixes are applied on top, in [`translation_overrides.json`](backend/data/translation_overrides.json). The words to review were chosen from a frequency list of contemporary Polish rather than from one novel, which would skew toward its own vocabulary.
 
-**A static demo instead of a hosted server.** The language model and word tables need a server with about 1.6 GB of memory, which isn't free to keep running everywhere. So the live demo is only the frontend on GitHub Pages, showing results saved ahead of time by the real pipeline. A test fails if those saved results stop matching the pipeline. The trade-off is that visitors can't upload their own book.
+**A static demo instead of a hosted server.** The language model and word tables need a server with about 1.3 GB of memory, which isn't free to keep running everywhere. So the live demo is only the frontend on GitHub Pages, showing results saved ahead of time by the real pipeline. A test fails if those saved results stop matching the pipeline. The trade-off is that visitors can't upload their own book.
 
 **Never store uploads.** Books are processed in memory and discarded, apart from a temporary file for EPUB parsing that's deleted straight away. `.gitignore` also blocks PDFs and EPUBs outside `sample/`, so copyrighted books can't be committed by accident.
 
@@ -224,7 +228,7 @@ This replaced two earlier checks, one for verbs while reading and one for whole 
 - **Known-words list:** hide words you've already learned, and show what coverage you'd reach by learning the next 100
 - **Choosing the right meaning from context,** using word-sense disambiguation
 - **OCR** for scanned books
-- **A hosted backend** so anyone can upload a book, on a host such as Hugging Face Spaces that can fit the app's roughly 1.6 GB memory use
+- **A hosted backend** so anyone can upload a book, on a host such as Hugging Face Spaces that can fit the app's roughly 1.3 GB memory use
 - **Frontend tests** for filtering, sorting and CSV export
 
 ## License

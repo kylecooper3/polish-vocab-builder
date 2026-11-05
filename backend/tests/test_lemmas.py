@@ -267,8 +267,10 @@ def test_a_repeated_sentence_does_not_add_more_marks(nlp):
     assert entry.example_spans == [(4, 8)]
 
 
-def _options(real_words=(), fallback=None, **forms):
-    return LemmaOptions(real_words=set(real_words), options=forms, fallback=fallback or {})
+def _options(real_words=(), fallback=None, verbal_nouns=None, **forms):
+    return LemmaOptions(
+        real_words=set(real_words), options=forms, fallback=fallback or {}, verbal_nouns=verbal_nouns or {}
+    )
 
 
 def _chosen(form, lemma, pos, options, rows=()):
@@ -530,3 +532,43 @@ def test_eats_and_them_land_in_different_rows(nlp):
     assert "eat" in eats.translation
     them = _entry(analyze_text("Książki leżą na stole, weź je.", nlp), "one")
     assert them is not None and "je" in them.forms
+
+
+def test_a_verbal_noun_counts_under_its_verb():
+    options = _options({"robić"}, verbal_nouns={"robienia": "robić"})
+    choice = _chosen("robienia", "robienie", "NOUN", options)
+    assert (choice.lemma, choice.group) == ("robić", "merged")
+
+
+def test_a_verbal_noun_replaces_a_made_up_lemma():
+    options = _options({"kupić"}, verbal_nouns={"kupienia": "kupić"})
+    assert _chosen("kupienia", "kupiyć", "NOUN", options).lemma == "kupić"
+
+
+def test_a_verbal_noun_already_under_its_verb_counts_as_agreement():
+    options = _options({"robić"}, verbal_nouns={"robienia": "robić"})
+    choice = _chosen("robienia", "robić", "NOUN", options)
+    assert (choice.lemma, choice.group) == ("robić", "in_dictionary")
+
+
+def test_the_same_spelling_used_as_an_adverb_stays_put():
+    options = _options({"zawzięcie"}, verbal_nouns={"zawzięcie": "zawziąć"})
+    assert _chosen("zawzięcie", "zawzięcie", "ADV", options).lemma == "zawzięcie"
+
+
+def test_exceptions_still_win_over_the_verbal_noun_rule():
+    options = _options({"rok"}, verbal_nouns={"laty": "latać"})
+    assert _chosen("laty", "rok", "NOUN", options).lemma == "rok"
+
+
+@pytest.mark.parametrize(
+    ("sentence", "form", "lemma"),
+    [
+        ("Słyszę głośne pukanie do drzwi.", "pukanie", "pukać"),
+        ("Tylko mi pan nie mów takie głupie gadanie.", "gadanie", "gadać"),
+        ("Moje mieszkanie jest bardzo duże.", "mieszkanie", "mieszkanie"),
+    ],
+)
+def test_verbal_nouns_in_real_sentences(nlp, sentence, form, lemma):
+    entry = _entry(analyze_text(sentence, nlp), lemma)
+    assert entry is not None and form in entry.forms

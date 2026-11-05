@@ -254,11 +254,18 @@ def build_lemma_options(records) -> dict:
     """
     real_words = set()
     options = defaultdict(lambda: defaultdict(set))
+    verbal_noun_records = []
+    other_nouns = set()
     for record in records:
         word, pos = record.get("word", "").lower(), record.get("pos")
         if not word or pos not in KEPT_POS:
             continue
         senses = record.get("senses", [])
+        if pos == "noun":
+            if senses and all(_is_verbal_noun_sense(sense) for sense in senses):
+                verbal_noun_records.append(record)
+            else:
+                other_nouns.add(word)
         if senses and not all(sense.get("form_of") for sense in senses):
             real_words.add(word)
             options[word][pos].add(word)
@@ -283,7 +290,40 @@ def build_lemma_options(records) -> dict:
     return {
         "real_words": sorted(real_words),
         "options": {form: value for form, value in encoded.items() if value},
+        "verbal_nouns": _verbal_nouns(verbal_noun_records, other_nouns, options),
     }
+
+
+def _is_verbal_noun_sense(sense: dict) -> bool:
+    return bool(sense.get("form_of")) and "verbal noun of" in " ".join(sense.get("glosses", []))
+
+
+def _verbal_nouns(records: list[dict], other_nouns: set[str], options: dict) -> dict[str, str]:
+    """Map the forms of nouns like "robienie" ("doing") to their verb, "robić".
+
+    A noun with a meaning of its own stays separate, like "mieszkanie" ("apartment"). So
+    does a noun with two possible verbs, or a spelling that belongs to another word.
+    """
+    verbs = defaultdict(set)
+    spellings = defaultdict(set)
+    for record in records:
+        word = record["word"].lower()
+        spellings[word].add(word)
+        for sense in record["senses"]:
+            verbs[word].update(link["word"].lower() for link in sense["form_of"])
+        for entry in record.get("forms", []):
+            if is_inflected_form(entry, "noun"):
+                spellings[word].add(entry["form"].lower())
+
+    claims = defaultdict(set)
+    for word, forms in spellings.items():
+        if len(verbs[word]) == 1 and word not in other_nouns:
+            verb = next(iter(verbs[word]))
+            for form in forms:
+                others = {w for words in options.get(form, {}).values() for w in words} - {word, verb}
+                if not others:
+                    claims[form].add(verb)
+    return {form: next(iter(found)) for form, found in claims.items() if len(found) == 1}
 
 
 def build_fallback(word_forms: dict[str, list[str]], options: dict[str, str]) -> dict[str, list[str]]:
@@ -315,6 +355,7 @@ def main(source: str) -> None:
     print(
         f"{len(lemma_options['real_words']):,} real words, {len(lemma_options['options']):,} spellings, "
         f"{len(lemma_options['fallback']):,} fallback spellings, "
+        f"{len(lemma_options['verbal_nouns']):,} verbal noun forms, "
         f"{LEMMA_OPTIONS_FILE.stat().st_size / 1e6:.1f} MB"
     )
     OUTPUT_FILE.parent.mkdir(exist_ok=True)

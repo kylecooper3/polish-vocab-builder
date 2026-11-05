@@ -11,9 +11,12 @@
 
 ## Word forms
 
-`word_forms.json.gz` maps forms of all kinds to every dictionary word they could belong to, such as `krążkiem` to `krążek`, or `meble` to both `mebel` and `meble`. It's built by the same script from the same source, and is shared under the same license. The app uses it as a fallback for lemmas that aren't in the dictionary. Related words listed in an entry, such as the diminutive `piesek` under `pies`, are left out, because they're different words.
+`lemma_options.json.gz` is built by the same script from the same source, and is shared under the same license. It has four parts:
 
-`lemma_options.json.gz` holds the same kind of information, grouped by part of speech, such as `rozumie` to `noun=rozum;verb=rozumieć`, plus a list of the real dictionary words. An entry that's only a form of another word, like `szedł`, isn't counted as real. The app uses it to check each of spaCy's answers. It's built by the same script and shared under the same license.
+- `real_words`: the dictionary words. An entry that's only a form of another word, like `szedł`, isn't counted as real.
+- `options`: each form's possible words, grouped by part of speech, such as `rozumie` to `noun=rozum;verb=rozumieć`. The app uses this to check each of spaCy's answers. Related words listed in an entry, such as the diminutive `piesek` under `pies`, are left out, because they're different words.
+- `fallback`: words for spellings `options` doesn't have, such as `największej` to `największy`, used only when `options` has nothing.
+- `verbal_nouns`: forms of nouns that only name an action, such as `robienia` to `robić`. Nouns with a meaning of their own, like `mieszkanie` ("apartment"), aren't included.
 
 ## Hand-written fixes
 

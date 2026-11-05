@@ -415,11 +415,11 @@ def test_multi_word_links_and_names_are_left_out():
         _entry_record("chłopi", "noun", [_sense_of("plural of x", "chłop pańszczyźniany", ["plural"])]),
         _entry_record("Warszawa", "name", [_sense_of("Warsaw")]),
     ])
-    assert data == {"real_words": [], "options": {}}
+    assert data == {"real_words": [], "options": {}, "verbal_nouns": {}}
 
 
 def test_for_form_separates_the_tag_from_every_option():
-    options = LemmaOptions(real_words=set(), options={"rozumie": "noun=rozum;verb=rozumieć"}, fallback={})
+    options = LemmaOptions(real_words=set(), options={"rozumie": "noun=rozum;verb=rozumieć"}, fallback={}, verbal_nouns={})
     assert options.for_form("rozumie", "VERB") == ({"rozumieć"}, {"rozum", "rozumieć"})
     assert options.for_form("rozumie", "ADP") == (set(), {"rozum", "rozumieć"})
     assert options.for_form("xyz", "NOUN") == (set(), set())
@@ -432,3 +432,82 @@ def test_real_lemma_options_handle_the_words_we_tested():
     assert "mógłbym" not in options.real_words
     assert {"mebel", "rozumieć", "pani", "rocznie"} <= options.real_words
     assert "pan" not in options.for_form("pani", "NOUN")[0]
+
+
+def _verbal_sense(verb):
+    return _sense_of(f"verbal noun of {verb}", verb, ["form-of", "noun-from-verb"])
+
+
+def test_a_noun_that_is_only_a_verbal_noun_points_to_its_verb():
+    data = build_lemma_options([
+        _entry_record("robić", "verb", [_sense_of("to do")]),
+        _entry_record("robienie", "noun", [_verbal_sense("robić")], ("robienia", ["genitive", "singular"])),
+    ])
+    assert data["verbal_nouns"] == {"robienie": "robić", "robienia": "robić"}
+
+
+def test_a_verbal_noun_with_its_own_meaning_stays_a_word():
+    data = build_lemma_options([
+        _entry_record("mieszkanie", "noun", [_sense_of("apartment")], ("mieszkania", ["genitive", "singular"])),
+        _entry_record("mieszkanie", "noun", [_verbal_sense("mieszkać")], ("mieszkania", ["genitive", "singular"])),
+    ])
+    assert data["verbal_nouns"] == {}
+
+
+def test_a_form_shared_with_a_real_noun_is_left_out():
+    data = build_lemma_options([
+        _entry_record("kos", "noun", [_sense_of("blackbird")], ("kosy", ["genitive", "singular"])),
+        _entry_record("koszenie", "noun", [_verbal_sense("kosić")], ("kosy", ["plural"]), ("koszenia", ["genitive", "singular"])),
+    ])
+    assert data["verbal_nouns"] == {"koszenie": "kosić", "koszenia": "kosić"}
+
+
+def test_a_verbal_noun_linked_to_two_verbs_is_left_out():
+    sense = _sense_of("verbal noun of a or b", "a", ["form-of", "noun-from-verb"])
+    sense["form_of"].append({"word": "b"})
+    assert build_lemma_options([_entry_record("x", "noun", [sense])])["verbal_nouns"] == {}
+
+
+def test_the_same_tag_on_another_kind_of_noun_is_not_a_verbal_noun():
+    sense = _sense_of("female equivalent of eks", "eks", ["form-of", "noun-from-verb"])
+    assert build_lemma_options([_entry_record("była", "noun", [sense])])["verbal_nouns"] == {}
+
+
+def test_a_verbal_noun_with_two_verbs_across_records_is_left_out():
+    data = build_lemma_options([
+        _entry_record("tępienie", "noun", [_verbal_sense("tępić")]),
+        _entry_record("tępienie", "noun", [_verbal_sense("tępieć")]),
+    ])
+    assert data["verbal_nouns"] == {}
+
+
+def test_a_spelling_that_belongs_to_another_verb_is_left_out():
+    data = build_lemma_options([
+        _entry_record("stawać", "verb", [_sense_of("to stand")], ("stanie", ["future", "singular"])),
+        _entry_record("stanie", "noun", [_verbal_sense("stać")], ("stania", ["genitive", "singular"])),
+    ])
+    assert data["verbal_nouns"] == {"stania": "stać"}
+
+
+def test_a_spelling_that_is_also_its_own_verb_stays_in():
+    data = build_lemma_options([
+        _entry_record("dostać", "verb", [_sense_of("to get")], ("dostanie", ["future", "singular"])),
+        _entry_record("dostanie", "noun", [_verbal_sense("dostać")]),
+    ])
+    assert data["verbal_nouns"] == {"dostanie": "dostać"}
+
+
+def test_two_verbal_nouns_sharing_a_spelling_are_left_out():
+    data = build_lemma_options([
+        _entry_record("aa", "noun", [_verbal_sense("x")], ("wspolne", ["plural"]), ("aaa", ["plural"])),
+        _entry_record("bb", "noun", [_verbal_sense("y")], ("wspolne", ["plural"])),
+    ])
+    assert data["verbal_nouns"] == {"aa": "x", "aaa": "x", "bb": "y"}
+
+
+def test_real_verbal_nouns_follow_the_rule():
+    options = load_lemma_options()
+    assert options.verbal_nouns["robienie"] == "robić"
+    assert options.verbal_nouns["pukania"] == "pukać"
+    for word in ("mieszkanie", "życie", "zdanie", "spotkanie", "przyjęcie", "jedzenie", "była", "stara", "tępienie"):
+        assert word not in options.verbal_nouns

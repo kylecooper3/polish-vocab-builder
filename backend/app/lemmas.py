@@ -216,6 +216,11 @@ def choose_lemma(
     if form in NOT_WORD_FORMS:
         return Choice(lemma, "in_dictionary" if in_dictionary else "no_match")
 
+    # "robienie" ("doing") only names the action, so a learner studies it with "robić".
+    verb = options.verbal_nouns.get(form) if pos == "NOUN" else None
+    if verb:
+        return Choice(verb, "in_dictionary" if verb == lemma else "merged")
+
     matching, every = options.for_form(form, pos)
     if lemma in matching:
         return Choice(lemma, "in_dictionary")
