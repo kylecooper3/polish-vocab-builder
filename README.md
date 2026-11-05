@@ -12,7 +12,7 @@ Upload a Polish book as a PDF or EPUB and get a frequency list of its vocabulary
 
 Polish is heavily inflected: a word changes form depending on its role in the sentence. `mam`, `masz` and `ma` are all forms of `mieć` ("to have"), and irregular forms can look nothing like the dictionary word, such as `szedł` from `iść` ("to go").
 
-Counting raw words would split one word into many entries and bury the words that matter. In *Lalka* by Bolesław Prus, `mieć` appears in **30 different forms**. Lemmatization reduces each form to its dictionary form, or *lemma*, so all 30 count as one word to learn.
+Counting raw words would split one word into many entries and bury the words that matter. In *Lalka* by Bolesław Prus, `mieć` appears in **34 different forms**. Lemmatization reduces each form to its dictionary form, or *lemma*, so all 34 count as one word to learn.
 
 It also makes the results useful for planning. In that novel (111,198 counted words):
 
