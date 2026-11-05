@@ -62,6 +62,12 @@ h1 {
   font-size: 0.9rem;
 }
 
+.analysis-time {
+  margin: 0 0 0 auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 input,
 select {
   padding: 8px 10px;

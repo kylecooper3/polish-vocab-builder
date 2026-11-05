@@ -64,6 +64,15 @@ export function splitBySpans(sentence, spans) {
   return pieces.filter((part) => part.text)
 }
 
+// Turns a time into words: "under a second", "32 seconds" or "2 min 5 sec".
+export function formatDuration(milliseconds) {
+  const seconds = Math.round(milliseconds / 1000)
+  if (seconds < 1) return 'under a second'
+  if (seconds === 1) return '1 second'
+  if (seconds < 60) return `${seconds} seconds`
+  return `${Math.floor(seconds / 60)} min ${seconds % 60} sec`
+}
+
 // How many rows to draw at a time in the long tables.
 export const PAGE_SIZE = 200
 

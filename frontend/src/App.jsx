@@ -3,6 +3,7 @@ import { analyzeBook, loadDemoResult } from './api.js'
 import DemoNotice from './components/DemoNotice.jsx'
 import Results from './components/Results.jsx'
 import UploadZone from './components/UploadZone.jsx'
+import { formatDuration } from './lemmaUtils.js'
 
 // True only in the build published to GitHub Pages, which has no backend to talk to.
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true'
@@ -32,9 +33,15 @@ function App() {
   async function handleFile(file) {
     setIsLoading(true)
     setError('')
+    const startedAt = performance.now()
     try {
       const result = await analyzeBook(file)
-      setBook({ result, filename: file.name, id: Date.now() })
+      setBook({
+        result,
+        filename: file.name,
+        id: Date.now(),
+        analysisTime: performance.now() - startedAt,
+      })
     } catch (uploadError) {
       setError(uploadError.message)
     } finally {
@@ -52,6 +59,10 @@ function App() {
         <p className="subtitle">
           Study the words that matter most, counted by dictionary form.
         </p>
+        {/* The live demo loads saved results, so it has no analysis time to show. */}
+        {book?.analysisTime !== undefined && (
+          <p className="analysis-time">Analyzed in {formatDuration(book.analysisTime)}</p>
+        )}
       </header>
 
       {IS_DEMO ? (
