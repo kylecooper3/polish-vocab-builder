@@ -391,6 +391,59 @@ def fold_leftovers(
     return folded
 
 
+def build_alternatives(records) -> dict[str, set[str]]:
+    """Map each word marked as an alternative form to its main word: "patrzyć" to "patrzeć".
+
+    A word with a current meaning of its own isn't an alternative, even if one sense says so:
+    "ospa" means "pox", though one old sense calls it a form of "osep".
+    """
+    alternatives = defaultdict(set)
+    has_own_meaning = set()
+    for record in records:
+        word = record.get("word", "").lower()
+        if not word or record.get("pos") not in KEPT_POS:
+            continue
+        for sense in record.get("senses", []):
+            for link in sense.get("alt_of", []):
+                target = link["word"].lower()
+                if target != word and not re.search(r"[ ,;=]", target):
+                    alternatives[word].add(target)
+            if _is_current_meaning(sense):
+                has_own_meaning.add(word)
+    return {word: targets for word, targets in alternatives.items() if word not in has_own_meaning}
+
+
+def _is_current_meaning(sense: dict) -> bool:
+    """Is this sense a meaning in today's Polish, rather than a pointer to another word?"""
+    if sense.get("alt_of") or sense.get("form_of") or not sense.get("glosses"):
+        return False
+    if RELATED_WORD.match(sense["glosses"][-1]):
+        return False
+    return not set(sense.get("tags", [])) & (SPECIALIST_TAGS | {"Middle"})
+
+
+def prefer_main_words(options: dict[str, str], alternatives: dict[str, set[str]]) -> dict[str, str]:
+    """Drop an option that's only an alternative form of another option: "patrzę" can be
+    "patrzeć" or "patrzyć", but Wiktionary calls "patrzyć" an alternative form of "patrzeć".
+
+    It only folds into a word already listed with the same part of speech, because some
+    links point to dialect words: "ja" ("I") is listed as an alternative of "jo".
+    """
+    preferred = {}
+    for form, encoded in options.items():
+        groups = []
+        for group in encoded.split(";"):
+            pos, _, words = group.partition("=")
+            listed = set(words.split(","))
+            kept = set()
+            for word in listed:
+                main = alternatives.get(word, set()) & listed
+                kept |= main if len(main) == 1 else {word}
+            groups.append(f"{pos}={','.join(sorted(kept))}")
+        preferred[form] = ";".join(groups)
+    return preferred
+
+
 def write_compressed_json(path: Path, data: dict) -> None:
     # mtime=0 means a rebuild with the same data gives an identical file for Git.
     path.write_bytes(
@@ -405,9 +458,13 @@ def main(source: str) -> None:
         word_forms = build_word_forms((json.loads(line) for line in handle), set(table))
     with open(source, encoding="utf-8") as handle:
         lemma_options = build_lemma_options(json.loads(line) for line in handle)
+    with open(source, encoding="utf-8") as handle:
+        alternatives = build_alternatives(json.loads(line) for line in handle)
     real_words = set(lemma_options["real_words"])
     folded = fold_leftovers(word_forms, real_words, lemma_options["options"])
-    lemma_options["options"] = {**shorten_chains(lemma_options["options"], real_words), **folded}
+    lemma_options["options"] = prefer_main_words(
+        {**shorten_chains(lemma_options["options"], real_words), **folded}, alternatives
+    )
     write_compressed_json(LEMMA_OPTIONS_FILE, lemma_options)
     print(
         f"{len(lemma_options['real_words']):,} real words, {len(lemma_options['options']):,} spellings, "

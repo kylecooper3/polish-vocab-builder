@@ -14,7 +14,7 @@
 `lemma_options.json.gz` is built by the same script from the same source, and is shared under the same license. It has three parts:
 
 - `real_words`: the dictionary words. An entry that's only a grammatical form of another word, like `szedł`, isn't counted as real. Female versions and diminutives are, like `nauczycielka`.
-- `options`: each form's possible words, grouped by part of speech, such as `rozumie` to `noun=rozum;verb=rozumieć`. The app uses this to check each of spaCy's answers. Related words listed in an entry, such as the diminutive `piesek` under `pies`, are left out, because they're different words. Each spelling points straight at its final word, so `lepsze` goes to `dobry` rather than `lepszy`. Spellings stored under `any` match no part of speech, so they only replace a lemma that isn't a real word.
+- `options`: each form's possible words, grouped by part of speech, such as `rozumie` to `noun=rozum;verb=rozumieć`. The app uses this to check each of spaCy's answers. Related words listed in an entry, such as the diminutive `piesek` under `pies`, are left out, because they're different words. Each spelling points straight at its final word, so `lepsze` goes to `dobry` rather than `lepszy`. Spellings stored under `any` match no part of speech, so they only replace a lemma that isn't a real word. When Wiktionary calls one option an alternative form of another option, only the main word is kept, so `patrzę` goes to `patrzeć` rather than also listing `patrzyć`.
 - `verbal_nouns`: forms of nouns that only name an action, such as `robienia` to `robić`. Nouns with a meaning of their own, like `mieszkanie` ("apartment"), aren't included.
 
 ## Hand-written fixes

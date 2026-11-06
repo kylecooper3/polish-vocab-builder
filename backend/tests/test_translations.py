@@ -13,8 +13,10 @@ from app.translations import (
 from scripts.build_translations import (
     KEPT_POS,
     build_table,
+    build_alternatives,
     build_lemma_options,
     fold_leftovers,
+    prefer_main_words,
     shorten_chains,
     build_word_forms,
     clean_meaning,
@@ -445,6 +447,60 @@ def test_real_lemma_options_handle_the_words_we_tested():
     assert "mógłbym" not in options.real_words
     assert {"mebel", "rozumieć", "pani", "rocznie"} <= options.real_words
     assert "pan" not in options.for_form("pani", "NOUN")[0]
+
+
+def _alternative_sense(target):
+    return _sense(f"alternative form of {target}", tags=["alt-of", "alternative"], alt_of=[{"word": target}])
+
+
+def test_alternatives_list_the_main_word_of_each_alternative_form():
+    alternatives = build_alternatives([
+        _record("patrzyć", "verb", _alternative_sense("patrzeć"), _sense("synonym of należeć się")),
+        _record("Patrzyk", "name", _alternative_sense("Patryk")),
+        _record("x", "verb", _alternative_sense("dwa słowa")),
+    ])
+    assert alternatives == {"patrzyć": {"patrzeć"}}
+
+
+def test_a_word_with_a_meaning_of_its_own_is_not_an_alternative():
+    # "ospa" means "pox", even though one old sense calls it an alternative form of "osep".
+    alternatives = build_alternatives([
+        _record("ospa", "noun", _sense("pox, varicella"), _alternative_sense("osep")),
+        _record("patrzyć", "verb", _alternative_sense("patrzeć"), _sense("to see", tags=["Middle", "Polish"])),
+        _record("awiz", "noun", _sense("alternative form of awizo", tags=["archaic"], alt_of=[{"word": "awizo"}])),
+    ])
+    assert alternatives == {"patrzyć": {"patrzeć"}, "awiz": {"awizo"}}
+
+
+def test_an_alternative_form_gives_way_to_its_main_word():
+    options = prefer_main_words({"patrzę": "verb=patrzeć,patrzyć"}, {"patrzyć": {"patrzeć"}})
+    assert options == {"patrzę": "verb=patrzeć"}
+
+
+def test_a_leftover_alternative_gives_way_too():
+    assert prefer_main_words({"owe": "any=owy,ów"}, {"owy": {"ów"}}) == {"owe": "any=ów"}
+
+
+def test_an_alternative_only_folds_into_a_word_already_listed():
+    # Wiktionary lists "ja" ("I") as an alternative of the dialect word "jo".
+    assert prefer_main_words({"nam": "pron=ja,my"}, {"ja": {"jo"}}) == {"nam": "pron=ja,my"}
+
+
+def test_an_alternative_does_not_fold_across_parts_of_speech():
+    options = {"kochani": "adj=kochany;verb=kochać"}
+    assert prefer_main_words(options, {"kochany": {"kochać"}}) == options
+
+
+def test_an_alternative_of_two_listed_words_is_left_alone():
+    options = {"x": "verb=a,b,c"}
+    assert prefer_main_words(options, {"c": {"a", "b"}}) == options
+
+
+def test_real_lemma_options_drop_alternative_forms():
+    options = load_lemma_options()
+    assert options.for_form("patrzę", "VERB")[0] == {"patrzeć"}
+    assert options.for_form("myśląc", "VERB")[0] == {"myśleć"}
+    assert options.for_form("stanę", "VERB")[0] == {"stanąć", "stać"}
 
 
 def _verbal_sense(verb):

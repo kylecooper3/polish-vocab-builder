@@ -506,6 +506,10 @@ def test_match_stats_cover_the_whole_book(nlp):
         ("Przyszedł ze szkoły do domu.", "ze", "z"),
         ("Zrobiłbym to przed laty, ale nie dziś.", "laty", "rok"),
         ("W pokoju stały stare meble.", "stały", "stać"),
+        # "patrzyć" is only an alternative form of "patrzeć", so it doesn't count as a second option.
+        ("Patrzę na niego i nic nie mówię.", "patrzę", "patrzeć"),
+        # Wiktionary calls "siebie" an alternative form of "się", but it's still its own row.
+        ("Mówił to tylko do siebie.", "siebie", "siebie"),
     ],
 )
 def test_real_sentences_get_the_right_word(nlp, sentence, form, lemma):

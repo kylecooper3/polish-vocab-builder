@@ -21,7 +21,7 @@ It also makes the results useful for planning. In that novel (111,198 counted wo
 | Top 100 | 48.9% |
 | Top 500 | 69.7% |
 | Top 1,000 | 78.4% |
-| Top 5,000 | 95.4% |
+| Top 5,000 | 95.5% |
 
 ## Features
 
@@ -189,6 +189,8 @@ This replaced two earlier checks, one for verbs while reading and one for whole 
 **Keep every Wiktionary lookup in one list.** The app used to load two tables of forms, and only about 4% of the second was ever read. Moving that part into the first gave identical results on *Lalka* and cut peak memory from about 1.6 GB to about 1.3 GB. That part then stayed as a separate fallback list, until a closer look showed it was covering for a gap in the first one.
 
 **Treat related words as words.** Wiktionary defines `dziewczynka` ("girl") and `nauczycielka` ("female teacher") by pointing at another word, so a rule meant for grammatical forms like `szedł` was skipping about 3,450 real words. Female versions and diminutives now count as their own words, which also fixed `biedaczka` and `kuzynek` being filed under the wrong gender. Everything else points straight at its final word, so `lepsze` goes to `dobry` without stopping at `lepszy`, and the fallback is gone. If the next step is a tie, it stops where it is. `większy` and `największy` are the superlatives of both `duży` and `wielki`, so a hand-written rule counts them under `duży`. On *Lalka*, this took the list from 9,750 rows to 9,617 with one fewer blank row. Of 60 sampled changes read against their sentences, one looked worse (`ogródki` in the idiom *bez ogródki*), though that judging wasn't done by a native speaker.
+
+**Fold alternative spellings into the main word.** `patrzę` ("I look") could be `patrzeć` or `patrzyć`, so the app treated it as a tie and left it unresolved. But Wiktionary calls `patrzyć` an "alternative form of" `patrzeć`, so it's the same word. When one option is only an alternative form of another option for the same spelling, the alternative is dropped. It never folds into a word that isn't already an option, because some links point to dialect words: `ja` ("I") is listed as an alternative of `jo`. A word with a current meaning of its own isn't treated as an alternative either, so `ospa` ("pox") isn't folded into the rare `osep`. On *Lalka*, this settled 41 of the 101 unresolved uses and moved 66 uses in all, taking the book from 9,617 rows to 9,590. All 42 moved words were reviewed and none looked wrong, though not by a native speaker.
 
 **Count verbal nouns under their verb.** `robienie` ("doing") is technically a noun, but it only names the action, so a learner studies it with `robić`. A word with a meaning of its own stays separate, like `mieszkanie` ("apartment"), and so does any word with two possible verbs, like `tępienie`, or a spelling that belongs to another word. This only applies to words tagged as nouns, because `zawzięcie` can also be an adverb. On *Lalka*, it moved 51 uses, taking the book to 9,750 rows and 1,222 blank rows. Each kind of change was read against its sentence, again not by a native speaker.
 
