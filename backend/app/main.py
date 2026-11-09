@@ -36,7 +36,7 @@ app.add_middleware(
 # A plain "def" (not "async def") makes FastAPI run this in a worker thread, so
 # a slow book doesn't stop the server from answering other requests.
 @app.post("/analyze", response_model=AnalysisResult)
-def analyze(file: UploadFile = File(...), exclude_stopwords: bool = False):
+def analyze(file: UploadFile = File(...)):
     # Reading one byte past the limit tells us the file is too big without
     # loading all of a huge upload into memory.
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
@@ -70,8 +70,4 @@ def analyze(file: UploadFile = File(...), exclude_stopwords: bool = False):
             detail="No text found. This may be a scanned book, which needs OCR.",
         )
 
-    # Ranks, totals, match stats and merges still describe the whole book, so the
-    # figures stay honest when stopwords are hidden.
-    if exclude_stopwords:
-        result.lemmas = [entry for entry in result.lemmas if not entry.is_stopword]
     return result

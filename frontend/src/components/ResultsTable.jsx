@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { PAGE_SIZE, posLabel } from '../lemmaUtils.js'
 import ExampleSentence from './ExampleSentence.jsx'
+import ShowMore from './ShowMore.jsx'
 
 // Drawing all 12,700 rows of a novel made filter changes about 3.5 times slower (669 ms
 // against 194 ms in development mode), so we only draw PAGE_SIZE at a time. Search,
@@ -97,20 +98,11 @@ function ResultsTable({
         </table>
       </div>
 
-      {rows.length > visibleCount && (
-        <div className="show-more">
-          <p>
-            Showing the first {visibleCount.toLocaleString()} of {rows.length.toLocaleString()}
-          </p>
-          <button
-            type="button"
-            className="button"
-            onClick={() => setVisibleCount(visibleCount + PAGE_SIZE)}
-          >
-            Show {PAGE_SIZE} more
-          </button>
-        </div>
-      )}
+      <ShowMore
+        shown={visibleCount}
+        total={rows.length}
+        onMore={() => setVisibleCount(visibleCount + PAGE_SIZE)}
+      />
     </>
   )
 }

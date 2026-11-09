@@ -149,14 +149,16 @@ export function searchLemmas(lemmas, query) {
 }
 
 export function sortLemmas(lemmas, key, direction) {
+  // Flipping the comparison, rather than reversing the sorted list, keeps words that tie
+  // in their original rank order: sort leaves equal items where they were.
+  const sign = direction === 'asc' ? 1 : -1
   // [...lemmas] sorts a copy. Array.sort changes the array it's given, and React
   // expects us never to change existing data directly.
-  const sorted = [...lemmas].sort((a, b) => {
-    if (typeof a[key] === 'number') return a[key] - b[key]
+  return [...lemmas].sort((a, b) => {
+    if (typeof a[key] === 'number') return sign * (a[key] - b[key])
     // 'pl' puts Polish letters in the right place: "ł" comes right after "l", not after "z".
-    return String(a[key]).localeCompare(String(b[key]), 'pl')
+    return sign * String(a[key]).localeCompare(String(b[key]), 'pl')
   })
-  return direction === 'asc' ? sorted : sorted.reverse()
 }
 
 // CSV format for importing into Anki: one card per line, with the word, its translation

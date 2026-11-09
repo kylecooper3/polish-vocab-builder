@@ -4,6 +4,8 @@ import re
 import unicodedata
 from collections import Counter
 
+from app.translations import load_lemma_options
+
 # A line that is only a page number: "12", "- 12 -", "12 / 300", "Strona 12", "XIV".
 PAGE_NUMBER_LINE = re.compile(
     r"^\W*(?:strona\s+)?\d{1,4}(?:\s*/\s*\d{1,4})?\W*$|^\W*[IVXLC]+\W*$",
@@ -14,7 +16,7 @@ ROMAN_LINE = re.compile(r"^\W*[ivxlc]+\W*$")
 SOFT_HYPHEN_AT_LINE_END = re.compile(r"­(?=[ \t]*$)", re.MULTILINE)
 
 # A word broken across a line: "książ-\nka" becomes "książka".
-LINE_BREAK_HYPHEN = re.compile(r"(?<=\w)[-‐]\n\s*(?=[a-ząćęłńóśźż])")
+LINE_BREAK_HYPHEN = re.compile(r"(\w+)[-‐]\n\s*([a-ząćęłńóśźż]\w*)")
 
 # A real compound keeps its hyphen: "Skłodowska-\nCurie" becomes "Skłodowska-Curie".
 LINE_BREAK_COMPOUND = re.compile(r"(?<=\w)([-‐])\n\s*(?=[A-ZĄĆĘŁŃÓŚŹŻ])")
@@ -55,10 +57,24 @@ def clean_pages(pages: list[str]) -> str:
     # Joining with a single newline lets a sentence or a hyphenated word carry
     # on across a page break.
     text = "\n".join(pages)
-    text = LINE_BREAK_HYPHEN.sub("", text)
+    text = LINE_BREAK_HYPHEN.sub(_rejoin, text)
     text = LINE_BREAK_COMPOUND.sub(r"\1", text)
     text = FOOTNOTE_MARKER.sub("", text)
     return _normalize_whitespace(text)
+
+
+def _rejoin(match: re.Match) -> str:
+    """Join a word split at a line end, unless it's a compound like "biało-czerwona".
+
+    A compound keeps its hyphen when the joined word isn't a known spelling but both
+    halves are, because "białoczerwona" isn't a word while "biało" and "czerwona" are.
+    """
+    left, right = match.groups()
+    spellings = load_lemma_options().options
+    joined = left + right
+    if joined.lower() not in spellings and left.lower() in spellings and right.lower() in spellings:
+        return f"{left}-{right}"
+    return joined
 
 
 def _normalize_characters(text: str) -> str:

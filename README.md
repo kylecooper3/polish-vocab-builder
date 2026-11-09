@@ -55,7 +55,7 @@ flowchart TD
     I --> J[Anki CSV download]
 ```
 
-**Stack:** Python, FastAPI, spaCy (`pl_core_news_lg`), PyMuPDF, ebooklib, BeautifulSoup, React, Vite. Tests use pytest and run on every push with GitHub Actions.
+**Stack:** Python, FastAPI, spaCy (`pl_core_news_lg`), PyMuPDF, ebooklib, BeautifulSoup, React, Vite. Tests use pytest for the backend and Node's built-in test runner for the frontend, and run on every push with GitHub Actions.
 
 ## Setup
 
@@ -112,9 +112,15 @@ From the `backend` folder, using the same Python as above:
 python -m pytest
 ```
 
+From the `frontend` folder:
+
+```bash
+npm test
+```
+
 ## API
 
-`POST /analyze` takes a file as `multipart/form-data`, plus an optional `exclude_stopwords=true` query parameter.
+`POST /analyze` takes a file as `multipart/form-data`.
 
 ```json
 {
@@ -157,7 +163,7 @@ python -m pytest
 
 `example_spans` gives the start and end position of each use of the word in its example, measured in characters, so the page can bold exactly the words counted for that row.
 
-`match_stats` shows how spaCy's answers matched the dictionary. Each use of a word counts in the group its form landed in, and each spaCy row counts once, under its biggest group. `merges` lists each move from spaCy's lemma to another word, biggest first. `method` is `only_match` when a form pointed to one word, or `tie_break` when the word already in the book was chosen. `new_row` means the book had no correct row for that word. Both describe the whole book, even with `exclude_stopwords=true`.
+`match_stats` shows how spaCy's answers matched the dictionary. Each use of a word counts in the group its form landed in, and each spaCy row counts once, under its biggest group. `merges` lists each move from spaCy's lemma to another word, biggest first. `method` is `only_match` when a form pointed to one word, or `tie_break` when the word already in the book was chosen. `new_row` means the book had no correct row for that word.
 
 | Status | Meaning |
 |---|---|
@@ -225,7 +231,7 @@ This replaced two earlier checks, one for verbs while reading and one for whole 
 - **PDF cleaning has only been tested at full length on a generated PDF.** It was checked by laying out a novel with headers, page numbers and hyphenation, then comparing the results to its EPUB. Real PDFs from other publishers may differ, and their footnotes will be counted as text.
 - **Publisher material can be counted.** Footnotes, title pages and notices are removed for standard EPUB markup and for Wolne Lektury books, but other publishers' front and back matter will be included.
 - **Scanned books aren't supported,** because they have no text layer and would need OCR.
-- **Only the backend has automated tests.** The frontend was tested by hand in a browser.
+- **The frontend's tests cover its logic, not its screens.** Filtering, sorting, coverage and the CSV export are tested, but the components were checked by hand in a browser.
 - **Stopwords come from spaCy's list,** which includes some useful words, such as `pan` ("sir").
 - **Language isn't detected.** An English book would produce a meaningless list rather than an error.
 
@@ -236,7 +242,6 @@ This replaced two earlier checks, one for verbs while reading and one for whole 
 - **Choosing the right meaning from context,** using word-sense disambiguation
 - **OCR** for scanned books
 - **A hosted backend** so anyone can upload a book, on a host such as Hugging Face Spaces that can fit the app's roughly 1.3 GB memory use
-- **Frontend tests** for filtering, sorting and CSV export
 
 ## License
 

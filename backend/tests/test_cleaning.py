@@ -11,6 +11,11 @@ def test_rejoins_word_hyphenated_across_pages():
     assert clean_pages(["To jest książ-", "ka o psie."]) == "To jest książka o psie."
 
 
+def test_keeps_hyphen_in_a_compound_split_across_lines():
+    # "biało" and "czerwona" are both words, but "białoczerwona" isn't.
+    assert clean_pages(["Flaga jest biało-\nczerwona."]) == "Flaga jest biało-czerwona."
+
+
 def test_keeps_hyphen_before_capitalized_word():
     assert clean_pages(["Maria Skłodowska-\nCurie"]) == "Maria Skłodowska-Curie"
 

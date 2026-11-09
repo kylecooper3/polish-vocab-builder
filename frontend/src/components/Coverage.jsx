@@ -6,8 +6,9 @@ function Coverage({ lemmas, totalTokens }) {
   // A good rule: keep state in the lowest component that needs it.
   const [topN, setTopN] = useState(500)
 
-  // Asking for the top 500 of a 17-word list really means the top 17.
-  const shown = Math.min(topN, lemmas.length)
+  // Asking for the top 500 of a 17-word list really means the top 17. A blank, zero or
+  // negative box means at least the top word, rather than a nonsense figure.
+  const shown = Math.max(1, Math.min(topN, lemmas.length))
   const percent = coveragePercent(lemmas, totalTokens, shown)
 
   return (

@@ -15,8 +15,8 @@ def client():
         yield test_client
 
 
-def _upload(client, filename, data, **params):
-    return client.post("/analyze", files={"file": (filename, data)}, params=params)
+def _upload(client, filename, data):
+    return client.post("/analyze", files={"file": (filename, data)})
 
 
 def test_pdf_upload_returns_lemma_list(client, make_pdf):
@@ -37,19 +37,6 @@ def test_epub_upload_returns_lemma_list(client, make_epub):
     response = _upload(client, "book.epub", make_epub([html]))
     assert response.status_code == 200
     assert any(item["lemma"] == "pies" for item in response.json()["lemmas"])
-
-
-def test_exclude_stopwords_keeps_ranks_and_totals(client, make_pdf):
-    data = make_pdf([BOOK_HTML])
-    full = _upload(client, "book.pdf", data).json()
-    filtered = _upload(client, "book.pdf", data, exclude_stopwords=True).json()
-
-    assert all(not item["is_stopword"] for item in filtered["lemmas"])
-    assert len(filtered["lemmas"]) < len(full["lemmas"])
-    assert filtered["total_tokens"] == full["total_tokens"]
-
-    ranks = {item["lemma"]: item["rank"] for item in full["lemmas"]}
-    assert all(item["rank"] == ranks[item["lemma"]] for item in filtered["lemmas"])
 
 
 @pytest.mark.parametrize("origin", ["http://localhost:5173", "http://127.0.0.1:5173"])
@@ -104,11 +91,3 @@ def test_response_includes_match_stats_and_merges(client, make_pdf):
     assert set(merge) == {
         "from_lemma", "to_lemma", "count", "pos", "forms", "example", "example_spans", "method", "new_row",
     }
-
-
-def test_exclude_stopwords_keeps_stats_and_merges_for_the_whole_book(client, make_pdf):
-    data = make_pdf(["<p>Bawił się małym krążkiem. Mam psa.</p>"])
-    full = _upload(client, "book.pdf", data).json()
-    filtered = _upload(client, "book.pdf", data, exclude_stopwords=True).json()
-    assert filtered["match_stats"] == full["match_stats"]
-    assert filtered["merges"] == full["merges"]

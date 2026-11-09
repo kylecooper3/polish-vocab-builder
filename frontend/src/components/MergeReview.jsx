@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { MERGE_METHOD_LABELS, PAGE_SIZE, filterMerges } from '../lemmaUtils.js'
 import ExampleSentence from './ExampleSentence.jsx'
+import ShowMore from './ShowMore.jsx'
 
 // A read-only list of every merge, so a person can judge them against their sentences.
 function MergeReview({ merges, lemmas }) {
@@ -85,20 +86,11 @@ function MergeReview({ merges, lemmas }) {
             </table>
           </div>
 
-          {rows.length > visibleCount && (
-            <div className="show-more">
-              <p>
-                Showing the first {visibleCount.toLocaleString()} of {rows.length.toLocaleString()}
-              </p>
-              <button
-                type="button"
-                className="button"
-                onClick={() => setVisibleCount(visibleCount + PAGE_SIZE)}
-              >
-                Show {PAGE_SIZE} more
-              </button>
-            </div>
-          )}
+          <ShowMore
+            shown={visibleCount}
+            total={rows.length}
+            onMore={() => setVisibleCount(visibleCount + PAGE_SIZE)}
+          />
         </>
       )}
     </section>
